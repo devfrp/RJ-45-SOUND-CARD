@@ -1,0 +1,27 @@
+# RJ45 Sound Card Server - systemd service
+#
+# Installation:
+#   sudo cp deploy/rjsc-server.service /etc/systemd/system/
+#   sudo mkdir -p /etc/rjsc
+#   sudo rjsc init /etc/rjsc/rjsc.toml
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now rjsc-server
+
+[Unit]
+Description=RJ45 Sound Card Server
+After=network.target sound.target
+Wants=network.target sound.target
+
+[Service]
+Type=simple
+User=rjsc
+ExecStart=/usr/bin/rjsc serve -c /etc/rjsc/rjsc.toml
+Restart=on-failure
+RestartSec=5
+Environment=RUST_LOG=info
+StandardOutput=journal
+Nice=-10
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target

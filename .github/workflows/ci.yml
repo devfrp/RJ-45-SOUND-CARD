@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint (fmt + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Linux dependencies
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Check formatting (non-blocking)
+        run: cargo fmt --check || true
+
+      - name: Check compilation (no GUI)
+        run: cargo check --no-default-features --all-targets
+
+      - name: Check compilation (with GUI)
+        run: cargo check --all-targets
+
+      - name: Clippy (no GUI)
+        run: cargo clippy --no-default-features --all-targets -- -D warnings
+
+      - name: Clippy (with GUI)
+        run: cargo clippy --all-targets -- -D warnings
+
+  build-and-test:
+    name: Build & Test (${{ matrix.name }})
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: macos
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Build (headless, no GUI)
+        run: cargo build --no-default-features --target ${{ matrix.target }}
+
+      - name: Build (with GUI, Linux only)
+        if: runner.os == 'Linux'
+        run: cargo build --target ${{ matrix.target }}
+
+      - name: Test
+        run: cargo test --target ${{ matrix.target }}
+
+  release:
+    name: Release Build
+    if: github.event_name == 'workflow_dispatch'
+    needs: build-and-test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: linux-x86_64
+            binary: rjsc
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: macos-x86_64
+            binary: rjsc
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: macos-arm64
+            binary: rjsc
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: windows-x86_64
+            binary: rjsc.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package archive
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cd "target/${{ matrix.target }}/release"
+            7z a -tzip "../../../rjsc-${{ matrix.suffix }}.zip" "${{ matrix.binary }}"
+          else
+            cd "target/${{ matrix.target }}/release"
+            tar -czf "../../../rjsc-${{ matrix.suffix }}.tar.gz" "${{ matrix.binary }}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rjsc-${{ matrix.suffix }}
+          path: rjsc-${{ matrix.suffix }}.*

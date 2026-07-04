@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>RJ45 Sound Card</title>
+    <meta name="description" content="RJ45 Sound Card — Network audio bridge. Share any sound card over Ethernet (RJ45) between Windows, Linux, and macOS. Low-latency UDP streaming.">
+    <meta name="keywords" content="audio, ethernet, sound card, network, low latency, rust, RJ45, UDP, streaming">
+    <meta name="author" content="devfrp">
+    <meta property="og:title" content="RJ45 Sound Card — Share your sound card over Ethernet">
+    <meta property="og:description" content="Low-latency network audio bridge. Turn an RJ45 cable into a professional multi-platform audio link.">
+    <meta property="og:url" content="https://devfrp.github.io/rj45-sound-card/">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <link rel="canonical" href="https://devfrp.github.io/rj45-sound-card/">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-orange: #d29922;
+            --toggle-bg: #161b22;
+        }
+        body.light {
+            --bg: #f6f8fa;
+            --surface: #ffffff;
+            --border: #d0d7de;
+            --text: #1a1a2e;
+            --text-secondary: #57606a;
+            --accent: #0969da;
+            --accent-green: #1a7f37;
+            --accent-orange: #9a6700;
+            --toggle-bg: #ffffff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Noto Sans, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+        nav {
+            border-bottom: 1px solid var(--border);
+            padding: 16px 0;
+            background: var(--surface);
+        }
+        nav .container {
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px;
+        }
+        nav .logo {
+            font-weight: 700; font-size: 1.2em; color: var(--text);
+            text-decoration: none;
+        }
+        nav .logo span { color: var(--accent); }
+        nav a:not(.logo) {
+            color: var(--text-secondary); text-decoration: none;
+            margin-left: 24px; font-size: 0.9em;
+        }
+        nav a:hover { color: var(--accent); }
+        nav a.portfolio-btn {
+            color: #a855f7;
+            background: rgba(168,85,247,0.1);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+            text-decoration: none;
+        }
+        nav a.portfolio-btn:hover {
+            background: rgba(168,85,247,0.2);
+            color: #a855f7;
+        }
+
+        header {
+            padding: 80px 0 60px;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+        header h1 {
+            font-size: 2.8em; font-weight: 700; margin-bottom: 16px;
+        }
+        header h1 span { color: var(--accent); }
+        header p {
+            font-size: 1.2em; color: var(--text-secondary);
+            max-width: 640px; margin: 0 auto 32px;
+        }
+        header .badges { margin-bottom: 32px; }
+        header .badges img { height: 24px; margin: 0 4px; }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 28px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95em;
+            margin: 4px;
+        }
+        .btn-primary {
+            background: var(--accent); color: #fff;
+        }
+        .btn-primary:hover { background: #4c96e8; }
+        .btn-secondary {
+            background: var(--surface); color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { border-color: var(--text-secondary); }
+
+        section { padding: 60px 0; border-bottom: 1px solid var(--border); }
+
+        section h2 {
+            font-size: 1.6em; margin-bottom: 24px;
+        }
+        section h2 span { color: var(--accent); }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .feature {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+        }
+        .feature h3 {
+            font-size: 1.1em; margin-bottom: 8px;
+        }
+        .feature h3 .icon { margin-right: 8px; }
+        .feature p {
+            font-size: 0.9em; color: var(--text-secondary);
+        }
+
+        .arch {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 32px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            line-height: 1.7;
+            overflow-x: auto;
+            margin-top: 16px;
+        }
+        .arch .arrow { color: var(--accent); font-weight: bold; }
+        .arch .label { color: var(--accent-green); }
+        .arch .port { color: var(--accent-orange); }
+
+        code {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 0.9em;
+        }
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+        th, td {
+            border: 1px solid var(--border);
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 0.9em;
+        }
+        th { background: var(--surface); font-weight: 600; }
+        td { color: var(--text-secondary); }
+
+        .platforms {
+            display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0;
+        }
+        .platform {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 24px;
+            flex: 1;
+            min-width: 140px;
+            text-align: center;
+        }
+        .platform .os { font-size: 2em; margin-bottom: 4px; }
+        .platform .name { font-weight: 600; }
+
+        footer {
+            padding: 40px 0;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85em;
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+
+
+        /* Documentation browser */
+        .docs-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+        .docs-sidebar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            position: sticky;
+            top: 60px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+        }
+        .docs-cat {
+            margin-bottom: 1.25rem;
+        }
+        .docs-cat-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.3rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .docs-cat a {
+            display: block;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            padding: 0.3rem 0.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: all .15s;
+            cursor: pointer;
+        }
+        .docs-cat a:hover, .docs-cat a.active {
+            color: var(--text);
+            background: rgba(88,166,255,0.1);
+            text-decoration: none;
+        }
+        .docs-content {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            min-height: 400px;
+            font-size: 0.9rem;
+            line-height: 1.7;
+            overflow-x: auto;
+        }
+        .docs-content h1 { font-size: 1.4rem; margin: 1.5rem 0 0.8rem; color: var(--text); }
+        .docs-content h1:first-child { margin-top: 0; }
+        .docs-content h2 { font-size: 1.15rem; margin: 1.3rem 0 0.6rem; color: var(--accent); }
+        .docs-content h3 { font-size: 1rem; margin: 1rem 0 0.4rem; }
+        .docs-content p { margin-bottom: 0.8rem; color: var(--text-secondary); }
+        .docs-content ul, .docs-content ol { margin: 0.5rem 0 0.8rem 1.5rem; color: var(--text-secondary); }
+        .docs-content li { margin-bottom: 0.3rem; }
+        .docs-content code {
+            background: #21262d;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.15rem 0.4rem;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+        .docs-content pre {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            margin: 0.8rem 0;
+        }
+        .docs-content pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            font-size: 0.82rem;
+        }
+        .docs-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.8rem 0;
+            font-size: 0.85rem;
+        }
+        .docs-content th, .docs-content td {
+            border: 1px solid var(--border);
+            padding: 0.5rem 0.8rem;
+            text-align: left;
+        }
+        .docs-content th {
+            background: var(--surface);
+            color: var(--text);
+            font-weight: 600;
+        }
+        .docs-content td { color: var(--text-secondary); }
+        .docs-content a { color: var(--accent); }
+        .docs-content blockquote {
+            border-left: 3px solid var(--accent);
+            padding: 0.3rem 1rem;
+            margin: 0.8rem 0;
+            color: var(--text-secondary);
+            background: rgba(88,166,255,0.05);
+            border-radius: 0 4px 4px 0;
+        }
+        .docs-welcome {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+        .docs-welcome h3 { font-size: 1.2rem; color: var(--text); margin-bottom: 0.5rem; }
+        .docs-loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 768px) {
+            .docs-layout { grid-template-columns: 1fr; }
+            .docs-sidebar { position: static; max-height: none; }
+        }
+
+        .theme-toggle {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: var(--toggle-bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-size: 1.2rem;
+            cursor: pointer;
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            border-color: var(--accent);
+        }
+
+        @media (max-width: 640px) {
+            header h1 { font-size: 2em; }
+            nav a:not(.logo) { margin-left: 12px; font-size: 0.8em; }
+        }
+    </style>
+</head>
+<body style="padding-top:36px">
+
+<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#1a1a2e;padding:6px 20px;display:flex;justify-content:flex-end;gap:10px;font-family:Inter,sans-serif;font-size:13px;border-bottom:1px solid #2a2a4a;">
+  <a href="index.html" style="color:#e1e1e8;text-decoration:none;padding:4px 10px;border-radius:6px;background:#2a2a4a;">🇫🇷 Français</a>
+  <a href="index.en.html" style="color:#e1e1e8;text-decoration:none;padding:4px 10px;border-radius:6px;background:#2a2a4a;">🇬🇧 English</a>
+</div>
+
+<nav>
+    <div class="container">
+        <a href="#" class="logo">RJ45 <span>Sound Card</span></a>
+        <div>
+            <a href="#features">Features</a>
+            <a href="#usage">Usage</a>
+            <a href="#install">Install</a>
+            <a href="#specs">Specifications</a>
+            <a href="#faq">FAQ</a>
+            <a href="#docs">Docs</a>
+            <a href="https://github.com/devfrp/rj45-sound-card">GitHub</a>
+            <a class="portfolio-btn" href="https://devfrp.github.io" target="_blank">Access my portfolio</a>
+        </div>
+    </div>
+</nav>
+
+<header>
+    <div class="container">
+        <div class="badges">
+            <img src="https://img.shields.io/badge/rust-1.96+-orange?logo=rust" alt="Rust">
+            <img src="https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-blue" alt="Platform">
+            <img src="https://img.shields.io/github/license/devfrp/rj45-sound-card" alt="License">
+            <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version">
+        </div>
+        <h1>Share any <span>sound card</span> over Ethernet</h1>
+        <p>
+            RJ45 Sound Card turns a simple Ethernet cable into a professional multi-platform audio link.
+            The server PC shares its physical sound card — MOTU, RME, Focusrite, Universal Audio, PreSonus, Behringer —
+            with a remote PC that sees it as a local device. Low-latency UDP streaming (~1.3 ms), auto-discovery over the network,
+            bidirectional 48 kHz / 32-bit float audio. Works on Windows, Linux, and macOS with a single Rust binary and zero dependencies.
+        </p>
+        <a href="https://github.com/devfrp/rj45-sound-card/releases/latest" class="btn btn-primary">Download</a>
+        <a href="https://github.com/devfrp/rj45-sound-card" class="btn btn-secondary">Source code</a>
+    </div>
+</header>
+
+<section id="features">
+    <div class="container">
+        <h2><span>/</span> Features</h2>
+        <div class="features">
+            <div class="feature">
+                <h3><span class="icon">🔌</span>Cross-platform</h3>
+                <p>Windows, Linux and macOS. A single Rust binary, no external dependencies.</p>
+            </div>
+            <div class="feature">
+                <h3><span class="icon">🎛️</span>All sound cards</h3>
+                <p>MOTU, RME, Focusrite, Universal Audio, Presonus, Behringer... compatible with any device recognized by the OS.</p>
+            </div>
+            <div class="feature">
+                <h3><span class="icon">🔁</span>Bidirectional</h3>
+                <p>Audio from studio to laptop AND mic/input capture from laptop sent back to studio.</p>
+            </div>
+            <div class="feature">
+                <h3><span class="icon">⚡</span>Low latency</h3>
+                <p>Pure UDP streaming with configurable buffers (64–1024 frames). Ideal for real-time monitoring.</p>
+            </div>
+            <div class="feature">
+                <h3><span class="icon">📡</span>Auto-discovery</h3>
+                <p>The client automatically finds servers on the local network via UDP broadcast.</p>
+            </div>
+            <div class="feature">
+                <h3><span class="icon">🎧</span>Virtual device</h3>
+                <p>The remote sound card appears as a local device (ALSA loopback, BlackHole, VB-Cable).</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section>
+    <div class="container">
+        <h2><span>/</span> Architecture</h2>
+        <div class="arch">
+┌─────────────────────────────┐       RJ45 (Ethernet)        ┌──────────────────────────────┐
+│                             │                               │                              │
+│  <span class="label">SERVER</span>  (Studio PC)          │◄─────────────────────────────►│  <span class="label">CLIENT</span>  (Laptop)          │
+│                             │                               │                              │
+│  ┌─────────────────────┐    │  <span class="port">UDP 42001</span>  audio stream    │  ┌──────────────────────┐      │
+│  │  Physical sound card│    │  <span class="port">TCP 42002</span>  control        │  │  Virtual Audio Device │      │
+│  │  (MOTU, RME, …)     │    │  <span class="port">UDP 42000</span>  discovery      │  │  (snd-aloop /         │      │
+│  └────────┬────────────┘    │                               │  │   BlackHole /          │      │
+│           │                 │                               │  │   VB-Cable)            │      │
+│  Capture ←┘                 │                               │  └────────▲───────────────┘      │
+│       ↓                     │                               │           │                      │
+│  ┌──────────┐               │                               │  ┌────────┴────────┐             │
+│  │  UDP TX  │───────────────┼───────────────────────────────┼─►│  UDP RX         │             │
+│  └──────────┘               │                               │  └────────▲────────┘             │
+│  ┌──────────┐               │                               │           │                      │
+│  │  UDP RX  │◄──────────────┼───────────────────────────────┼───────────┘                      │
+│  └─────┬────┘               │                               │  ┌──────────────┐                │
+│        ↓                    │                               │  │  UDP TX      │────────────────┤
+│  ┌──────────┐               │                               │  └──────────────┘                │
+│  │ Playback │               │                               │       ↑                         │
+│  └──────────┘               │                               │  Capture                         │
+└─────────────────────────────┘                               └──────────────────────────────┘
+        </div>
+    </div>
+</section>
+
+<section id="install">
+    <div class="container">
+        <h2><span>/</span> Installation</h2>
+
+        <h3>Build</h3>
+        <pre><code>git clone https://github.com/devfrp/rj45-sound-card.git
+cd rj45-sound-card
+cargo build --release
+./target/release/rjsc --help</code></pre>
+
+        <h3>Virtual audio device (client)</h3>
+        <div class="platforms">
+            <div class="platform">
+                <div class="os">🐧</div>
+                <div class="name">Linux</div>
+                <code>sudo ./scripts/linux_setup.sh install</code>
+            </div>
+            <div class="platform">
+                <div class="os">🍎</div>
+                <div class="name">macOS</div>
+                <code>sudo ./scripts/mac_setup.sh install</code>
+            </div>
+            <div class="platform">
+                <div class="os">🪟</div>
+                <div class="name">Windows</div>
+                <code>powershell -ExecutionPolicy Bypass -File scripts\windows_setup.ps1 install</code>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="usage">
+    <div class="container">
+        <h2><span>/</span> Usage</h2>
+
+        <h3>1. List devices</h3>
+        <pre><code># On both machines
+rjsc list</code></pre>
+
+        <h3>2. Configure</h3>
+        <pre><code>rjsc init  # generates rjsc.toml</code></pre>
+
+        <h3>3. Server (Studio PC)</h3>
+        <pre><code># Share the sound card (MOTU, RME...)
+rjsc serve</code></pre>
+
+        <h3>4. Client (Laptop)</h3>
+        <pre><code># Automatic connection
+rjsc connect
+
+# Or direct address
+rjsc connect --server 192.168.1.100:42002</code></pre>
+
+        <h3>5. GUI</h3>
+        <pre><code># Control panel
+rjsc gui</code></pre>
+
+        <table>
+            <tr><th>Port</th><th>Protocol</th><th>Usage</th></tr>
+            <tr><td>42000</td><td>UDP</td><td>Service discovery (JSON broadcast every 3s)</td></tr>
+            <tr><td>42001</td><td>UDP</td><td>Audio stream (raw PCM f32)</td></tr>
+            <tr><td>42002</td><td>TCP</td><td>Control (JSON messages, length-prefixed format)</td></tr>
+        </table>
+    </div>
+</section>
+
+<section>
+    <div class="container">
+        <h2><span>/</span> Latency</h2>
+        <table>
+            <tr><th>Buffer</th><th>Latency (48 kHz)</th><th>Usage</th></tr>
+            <tr><td>64 frames</td><td>~1.3 ms</td><td>Real-time monitoring</td></tr>
+            <tr><td>128 frames</td><td>~2.7 ms</td><td>Optimal performance</td></tr>
+            <tr><td>256 frames</td><td>~5.3 ms</td><td>Standard usage</td></tr>
+            <tr><td>512 frames</td><td>~10.7 ms</td><td>Non-optimized network</td></tr>
+            <tr><td>1024 frames</td><td>~21.3 ms</td><td>Troubleshooting</td></tr>
+        </table>
+        <p style="margin-top:12px; color:var(--text-secondary);">
+            For 48 channels @ 48 kHz: ~55 Mbps, well within Gigabit Ethernet capacity.
+        </p>
+    </div>
+</section>
+
+<section id="example">
+    <div class="container">
+        <h2><span>/</span> Concrete example</h2>
+        <div class="feature" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;">
+            <h3>Studio → Laptop</h3>
+            <p>
+                The studio PC (server) shares its physical sound card (e.g. MOTU, RME, Focusrite...)
+                with a laptop (client) via RJ45. The client sees the remote sound card
+                as a local device thanks to the virtual audio device.
+                Latency is configurable down to ~1.3 ms over Gigabit Ethernet.
+            </p>
+        </div>
+    </div>
+</section>
+
+<section id="specs">
+    <div class="container">
+        <h2><span>/</span> Technical specifications</h2>
+        <table>
+            <tr><th>Specification</th><th>Value</th></tr>
+            <tr><td>Language</td><td>Rust (edition 2021)</td></tr>
+            <tr><td>Build</td><td>Rust 1.96+, cargo build --release</td></tr>
+            <tr><td>Supported OS</td><td>Windows 10/11, Linux (kernel 5.10+), macOS 12+</td></tr>
+            <tr><td>Architectures</td><td>x86_64 (AMD64), ARM64 (Apple Silicon native)</td></tr>
+            <tr><td>Sample rate</td><td>44.1 kHz, 48 kHz, 88.2 kHz, 96 kHz, 176.4 kHz, 192 kHz</td></tr>
+            <tr><td>Audio format</td><td>PCM f32 (32-bit float), stereo by default</td></tr>
+            <tr><td>Channels</td><td>1 (mono) to 48 simultaneous channels</td></tr>
+            <tr><td>Buffer</td><td>64 — 1024 frames (configurable)</td></tr>
+            <tr><td>Minimum latency</td><td>~1.3 ms @ 48 kHz / 64 frames (Gigabit Ethernet)</td></tr>
+            <tr><td>Bandwidth</td><td>~55 Mbps for 48 channels @ 48 kHz</td></tr>
+            <tr><td>Discovery protocol</td><td>UDP JSON broadcast (port 42000), every 3 seconds</td></tr>
+            <tr><td>Audio protocol</td><td>UDP raw PCM stream (port 42001)</td></tr>
+            <tr><td>Control protocol</td><td>TCP JSON messages length-prefixed (port 42002)</td></tr>
+            <tr><td>Virtual device</td><td>ALSA snd-aloop (Linux), BlackHole (macOS), VB-Cable (Windows)</td></tr>
+            <tr><td>GUI</td><td>egui / eframe (Rust), real-time control panel</td></tr>
+            <tr><td>License</td><td>MIT</td></tr>
+        </table>
+    </div>
+</section>
+
+
+<section id="faq">
+    <div class="container">
+        <h2><span>/</span> FAQ</h2>
+        <div class="features">
+            <div class="feature">
+                <h3>What is the actual latency in practice?</h3>
+                <p>Over Gigabit Ethernet with a 64-frame buffer: ~1.3 ms. With a 128-frame buffer: ~2.7 ms. Latency mainly depends on cable quality and network load. A dedicated Cat6 or Cat7 cable is recommended.</p>
+            </div>
+            <div class="feature">
+                <h3>Can I use Wi-Fi instead of Ethernet?</h3>
+                <p>Technically yes, but it is strongly discouraged. Wi-Fi introduces jitter and packet loss that degrade audio. Gigabit Ethernet is required for professional-grade latency.</p>
+            </div>
+            <div class="feature">
+                <h3>How many simultaneous audio channels?</h3>
+                <p>Up to 48 simultaneous channels in 48 kHz stereo. The required bandwidth is about 55 Mbps, well below the 1000 Mbps of Gigabit Ethernet.</p>
+            </div>
+            <div class="feature">
+                <h3>Does it work with an external USB sound card?</h3>
+                <p>Yes. The server shares any device recognized by the OS — internal PCIe cards, USB interfaces, FireWire, Thunderbolt. The client receives the stream as a local device.</p>
+            </div>
+            <div class="feature">
+                <h3>How to configure the virtual audio device on the client?</h3>
+                <p>Linux: <code>sudo ./scripts/linux_setup.sh install</code> (installs snd-aloop). macOS: <code>sudo ./scripts/mac_setup.sh install</code> (installs BlackHole). Windows: provided PowerShell script (VB-Cable).</p>
+            </div>
+            <div class="feature">
+                <h3>Is the project stable for production use?</h3>
+                <p>The project is functional for monitoring and light production sessions. We recommend prior testing before any use in critical environments.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<section id="docs">
+    <div class="container">
+        <h2><span>/</span> Documentation</h2>
+        <div class="docs-layout">
+            <aside class="docs-sidebar" id="docs-sidebar"></aside>
+            <div class="docs-content" id="docs-content">
+                <div class="docs-welcome">
+                    <h3>📚 RJ45 Sound Card Documentation</h3>
+                    <p>Select a document to view its content.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="container">
+        <p>
+            <a href="https://github.com/devfrp/rj45-sound-card">RJ45 Sound Card</a> —
+            MIT License —
+            Built with <a href="https://www.rust-lang.org/">Rust</a>,
+            <a href="https://github.com/RustAudio/cpal">cpal</a>,
+            <a href="https://tokio.rs/">Tokio</a> and
+            <a href="https://github.com/emilk/egui">egui</a>
+        </p>
+    </div>
+</footer>
+
+
+<script>
+(function() {
+    var toggle = document.getElementById('themeToggle');
+    if (toggle) {
+        var saved = localStorage.getItem('rjsc-theme');
+        if (saved === 'light') {
+            document.body.classList.add('light');
+            toggle.textContent = '☀️';
+        }
+        toggle.addEventListener('click', function() {
+            document.body.classList.toggle('light');
+            var isLight = document.body.classList.contains('light');
+            toggle.textContent = isLight ? '☀️' : '🌙';
+            localStorage.setItem('rjsc-theme', isLight ? 'light' : 'dark');
+        });
+    }
+
+var DOCS_BASE = 'https://raw.githubusercontent.com/devfrp/rj45-sound-card/main';
+var DOCS_INDEX = [
+    { cat: 'Guides', items: [
+        { name: 'README (Français)', file: 'README.md' },
+        { name: 'README (English)', file: 'README.en.md' },
+        { name: 'Installation', section: '#install' },
+        { name: 'Usage', section: '#usage' },
+        { name: 'Concrete example', section: '#example' },
+    ]},
+    { cat: 'Reference', items: [
+        { name: 'Configuration', file: 'docs/config.md' },
+        { name: 'Features', section: '#features' },
+        { name: 'Technical specifications', section: '#specs' },
+        { name: 'FAQ', section: '#faq' },
+    ]},
+    { cat: 'Developer', items: [
+        { name: 'Architecture', file: 'ARCHITECTURE.md' },
+        { name: 'Contributing', file: 'CONTRIBUTING.md' },
+        { name: 'Changelog', file: 'CHANGELOG.md' },
+    ]},
+];
+
+function buildDocSidebar() {
+    // Auto-clean old localStorage cache keys
+    for (var key in localStorage) {
+        if (/^rjsc-doc-(?!v2-)/.test(key)) localStorage.removeItem(key);
+    }
+    var sidebar = document.getElementById('docs-sidebar');
+    if (!sidebar) return;
+    var html = '';
+    DOCS_INDEX.forEach(function(cat) {
+        html += '<div class="docs-cat">';
+        html += '<div class="docs-cat-title">' + cat.cat + '</div>';
+        cat.items.forEach(function(item) {
+            if (item.file) {
+                html += '<a data-file="' + item.file + '" data-name="' + item.name + '">' + item.name + '</a>';
+            } else {
+                html += '<a data-section="' + item.section + '">' + item.name + '</a>';
+            }
+        });
+        html += '</div>';
+    });
+    sidebar.innerHTML = html;
+    sidebar.querySelectorAll('a').forEach(function(a) {
+        a.addEventListener('click', function() {
+            sidebar.querySelectorAll('a').forEach(function(el) { el.classList.remove('active'); });
+            a.classList.add('active');
+            if (a.dataset.file) {
+                loadDoc(a.dataset.file, a.dataset.name);
+            } else if (a.dataset.section) {
+                document.querySelector(a.dataset.section).scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+    });
+}
+
+function parseMarkdown(md) {
+    var h = md;
+
+    // ---- Step 1: protect elements that must not be HTML-escaped ----
+    var codeBlocks = [];
+    h = h.replace(/```(\w*)\n([\s\S]*?)```/g, function(_, lang, code) {
+        var escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        codeBlocks.push('<pre><code>' + escaped + '</code></pre>');
+        return '\x00C' + (codeBlocks.length - 1) + '\x00';
+    });
+
+    var inlineCodes = [];
+    h = h.replace(/`([^`]+)`/g, function(_, code) {
+        var escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        inlineCodes.push('<code>' + escaped + '</code>');
+        return '\x01c' + (inlineCodes.length - 1) + '\x01';
+    });
+
+    var bquotes = [];
+    h = h.replace(/^> (.*)$/gm, function(_, text) {
+        bquotes.push(text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+        return '\x02q' + (bquotes.length - 1) + '\x02';
+    });
+
+    // ---- Step 2: HTML-escape everything else ----
+    h = h.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // ---- Step 3: restore protected elements ----
+    h = h.replace(/\x00C(\d+)\x00/g, function(_, i) { return codeBlocks[parseInt(i)]; });
+    h = h.replace(/\x01c(\d+)\x01/g, function(_, i) { return inlineCodes[parseInt(i)]; });
+    h = h.replace(/\x02q(\d+)\x02/g, function(_, i) { return '<blockquote>' + bquotes[parseInt(i)] + '</blockquote>'; });
+
+    // ---- Step 4: convert markdown syntax to HTML ----
+    h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    h = h.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    h = h.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    h = h.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+    h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    h = h.replace(/^---$/gm, '<hr>');
+
+    // Lists: ordered (1.) and unordered (-, *, +)
+    h = h.replace(/^(\d+)\. (.+)$/gm, '\x03OL\x03$2');
+    h = h.replace(/^[\-\*\+] (.+)$/gm, '\x03UL\x03$1');
+    // Group adjacent list items
+    h = h.replace(/(?:\x03OL\x03.*\n?)+/g, function(m) {
+        var items = m.split(/\x03OL\x03/).filter(Boolean);
+        return '<ol>\n' + items.map(function(it) { return '<li>' + it.trim() + '</li>'; }).join('\n') + '\n</ol>';
+    });
+    h = h.replace(/(?:\x03UL\x03.*\n?)+/g, function(m) {
+        var items = m.split(/\x03UL\x03/).filter(Boolean);
+        return '<ul>\n' + items.map(function(it) { return '<li>' + it.trim() + '</li>'; }).join('\n') + '\n</ul>';
+    });
+
+    // Tables
+    function isSep(line) {
+        if (!/^\|.+\|$/.test(line)) return false;
+        var cells = line.slice(1, -1).split('|');
+        return cells.every(function(c) { return /^[\s\-:]+$/.test(c); });
+    }
+    h = h.replace(/(?:^\|.+?\|[ \t]*$\n?)+/gm, function(block) {
+        var lines = block.trim().split('\n').filter(function(l) { return /^\|.*\|/.test(l.trim()); });
+        if (lines.length < 2) return block;
+        var rows = [], header = true;
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!/^\|/.test(line) || !/\|$/.test(line)) continue;
+            if (isSep(line)) continue;
+            var cells = line.slice(1, -1).split('|').map(function(c) { return c.trim(); });
+            if (cells.length === 0) continue;
+            rows.push({ cells: cells, isHead: header });
+            header = false;
+        }
+        if (rows.length === 0) return '';
+        var html = '<table>\n';
+        for (var r = 0; r < rows.length; r++) {
+            var tag = rows[r].isHead ? 'th' : 'td';
+            html += '<tr>';
+            for (var c = 0; c < rows[r].cells.length; c++) {
+                html += '<' + tag + '>' + rows[r].cells[c] + '</' + tag + '>';
+            }
+            html += '</tr>\n';
+        }
+        html += '</table>';
+        return html;
+    });
+
+    // Wrap remaining lines in <p>
+    h = h.replace(/^(?!<[a-z/!])(.+)$/gm, '<p>$1</p>');
+    h = h.replace(/<p>\s*<\/p>/g, '');
+    return h;
+}
+
+async function loadDoc(file, name) {
+    var content = document.getElementById('docs-content');
+    var cacheKey = 'rjsc-doc-v2-' + file;
+    var cached = localStorage.getItem(cacheKey);
+    if (cached) {
+        try {
+            var parsed = JSON.parse(cached);
+            if (Date.now() - parsed.t < 86400000) {
+                content.innerHTML = parseMarkdown(parsed.d);
+                return;
+            }
+        } catch(e) {}
+    }
+    content.innerHTML = '<div class="docs-loading">Loading <strong>' + name + '</strong>...</div>';
+    try {
+        var res = await fetch(DOCS_BASE + '/' + file + '?nocache=' + Date.now());
+        if (!res.ok) throw new Error('Not found');
+        var md = await res.text();
+        localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), d: md }));
+        content.innerHTML = parseMarkdown(md);
+    } catch (e) {
+        content.innerHTML = '<div class="docs-welcome"><h3>Error</h3><p>Unable to load <strong>' + name + '</strong>. <a href="' + DOCS_BASE + '/' + file + '" target="_blank">Open on GitHub</a></p></div>';
+    }
+}
+
+buildDocSidebar();
+})();
+</script>
+
+<button class="theme-toggle" id="themeToggle" title="Toggle theme" aria-label="Toggle light/dark theme">🌙</button>
+
+</body>
+</html>

@@ -1,0 +1,241 @@
+.TH RJSC 1 "June 2026" "rjsc 1.0.0" "User Commands"
+.SH NAME
+rjsc \- RJ45 Sound Card \- share any audio device over Ethernet
+.SH SYNOPSIS
+.B rjsc
+[\fIOPTIONS\fR] \fICOMMAND\fR
+.SH DESCRIPTION
+Network audio bridge that lets you share any physical sound card from one PC
+(the \fBserver\fR) over a wired Ethernet (RJ45) cable to another PC
+(the \fBclient\fR), where it appears as a local virtual audio device.
+Audio is bidirectional — server-to-client AND client-to-server — using raw
+UDP for audio streaming, TCP for control messages, and UDP broadcast for
+auto-discovery on the local network.
+
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print help information and exit.
+.TP
+.BR \-V ", " \-\-version
+Print version information and exit.
+
+.SH COMMANDS
+.TP
+\fBserve\fR [\fB\-c\fR \fICONFIG\fR]
+Run in SERVER mode: share this PC's audio devices over the network.
+.TP
+\fBconnect\fR [\fB\-c\fR \fICONFIG\fR] [\fB\-s\fR \fIADDRESS\fR]
+Run in CLIENT mode: connect to a remote server and use its audio devices.
+If \fB\-s\fR is not provided, auto-discovers servers via UDP broadcast on port 42000.
+.TP
+\fBlist\fR
+List all available audio devices on this machine (input and output).
+.TP
+\fBgui\fR [\fB\-c\fR \fICONFIG\fR] [\fB\-s\fR \fIADDRESS\fR]
+Open the graphical control panel (requires \fBgui\fR feature at build time).
+Provides device selection, volume sliders, and live logging.
+.TP
+\fBinit\fR [\fIPATH\fR]
+Generate a default configuration file at \fIPATH\fR (default: \fBrjsc.toml\fR).
+Edit this file to configure audio devices, network ports, and mode settings.
+
+.SH FILES
+.TP
+\fBrjsc.toml\fR
+Configuration file in TOML format. See \fBCONFIGURATION\fR section below.
+
+.SH CONFIGURATION
+The configuration file has four sections:
+.TS
+tab(:);
+l l.
+\fB[audio]\fR:Audio device and format settings
+\fB[network]\fR:Network ports and bind address
+\fB[server]\fR:Server-specific options
+\fB[client]\fR:Client-specific options
+.TE
+.sp
+.TP
+\fB[audio]\fR options:
+.RS
+.TP
+\fBinput_device\fR = \fI"@default"\fR
+Input device name (or \fB@default\fR for system default). Run \fBrjsc list\fR to see available devices.
+.TP
+\fBoutput_device\fR = \fI"@default"\fR
+Output device name. Use \fB@default\fR for system default.
+.TP
+\fBchannels\fR = \fI2\fR
+Number of audio channels (1\~to\~64).
+.TP
+\fBsample_rate\fR = \fI48000\fR
+Sample rate in Hz. Supported values: 44100, 48000, 96000, 192000.
+.TP
+\fBbuffer_frames\fR = \fI256\fR
+Buffer size in frames. Lower values reduce latency but increase CPU usage.
+Supported sizes: 64, 128, 256, 512, 1024.
+.RE
+.TP
+\fB[network]\fR options:
+.RS
+.TP
+\fBaudio_port\fR = \fI42001\fR
+UDP port for raw PCM audio streaming.
+.TP
+\fBcontrol_port\fR = \fI42002\fR
+TCP port for JSON control messages.
+.TP
+\fBdiscovery_port\fR = \fI42000\fR
+UDP port for broadcast discovery announcements.
+.TP
+\fBbind_address\fR = \fI"0.0.0.0"\fR
+Network interface to bind to.
+.RE
+.TP
+\fB[server]\fR options:
+.RS
+.TP
+\fBauto_accept\fR = \fItrue\fR
+Whether to automatically accept incoming client connections.
+.TP
+\fBmax_clients\fR = \fI4\fR
+Maximum number of simultaneously connected clients.
+.RE
+.TP
+\fB[client]\fR options:
+.RS
+.TP
+\fBserver_address\fR = \fI""\fR
+Server address in \fIip:port\fR format. Leave empty for auto-discovery.
+.TP
+\fBuse_virtual_device\fR = \fItrue\fR
+Whether to send audio to a virtual audio device on the client (e.g. ALSA snd-aloop, BlackHole, VB-Cable).
+.TP
+\fBvirtual_device_name\fR = \fI"RJ45 Virtual Audio"\fR
+Name of the virtual audio device to use for playback.
+.TP
+\fBauto_reconnect\fR = \fItrue\fR
+Automatically reconnect to the server if the connection is lost (5s delay).
+.RE
+
+.SH PROTOCOLS
+.TP
+\fBPort 42000/UDP\fR
+Discovery. The server broadcasts a JSON announcement every 3 seconds to
+255.255.255.255. The client listens on this port to find available servers.
+.TP
+\fBPort 42001/UDP\fR
+Audio streaming. Raw 32-bit float PCM samples with a 40-byte binary header
+containing magic (0x524A3435 = "RJ45"), stream ID, sequence number,
+timestamp, channel count, sample rate, and frame count.
+Maximum UDP payload: 65507 bytes.
+.TP
+\fBPort 42002/TCP\fR
+Control protocol. JSON messages prefixed by a 4-byte little-endian length field.
+Supports device listing, selection, stream start/stop, volume control,
+status queries, and ping/pong keep-alive.
+
+.SH EXAMPLES
+.PP
+\fBList available audio devices:\fR
+.nf
+    rjsc list
+.fi
+.PP
+\fBGenerate and edit the config file:\fR
+.nf
+    rjsc init
+    $EDITOR rjsc.toml
+.fi
+.PP
+\fBStart the server (studio PC with physical sound card):\fR
+.nf
+    rjsc serve
+    rjsc serve \-c /etc/rjsc.toml
+.fi
+.PP
+\fBConnect a client via auto-discovery:\fR
+.nf
+    rjsc connect
+.fi
+.PP
+\fBConnect a client to a specific server:\fR
+.nf
+    rjsc connect \-\-server 192.168.1.100:42002
+.fi
+.PP
+\fBOpen the GUI control panel:\fR
+.nf
+    rjsc gui
+    rjsc gui \-\-server 192.168.1.100:42002
+.fi
+
+.SH VIRTUAL AUDIO DEVICES
+For the client to present the remote sound card as a local device:
+.TP
+\fBLinux\fR
+Run \fBsudo ./scripts/linux_setup.sh install\fR to load the \fBsnd-aloop\fR
+kernel module. Creates virtual loopback audio devices.
+.TP
+\fBmacOS\fR
+Run \fBsudo ./scripts/mac_setup.sh install\fR to install BlackHole.
+.TP
+\fBWindows\fR
+Run \fBpowershell -ExecutionPolicy Bypass -File scripts\\windows_setup.ps1 install\fR
+as Administrator to install VB-Cable.
+
+.SH LATENCY
+.nf
+Buffer    Latency @ 48 kHz    Recommended use
+\~\~\~\~\~\~    \~\~\~\~\~\~\~\~\~\~\~\~\~\~\~    \~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~
+64         ~1.3 ms             Real-time monitoring
+128        ~2.7 ms             Optimal performance
+256        ~5.3 ms             Standard usage
+512        ~10.7 ms            High-latency network
+1024       ~21.3 ms            Troubleshooting
+.fi
+.PP
+Bandwidth for 48 channels @ 48 kHz: ~55 Mbps, well within Gigabit Ethernet capability.
+
+.SH FIREWALL
+Open the following ports on both server and client:
+.br
+\fBUDP 42000\fR (service discovery)
+.br
+\fBUDP 42001\fR (audio streaming)
+.br
+\fBTCP 42002\fR (control protocol)
+
+.SH ENVIRONMENT
+.TP
+\fBHOSTNAME\fR or \fBCOMPUTERNAME\fR
+Used by the server for discovery announcements. Falls back to "unknown" if unset.
+.TP
+\fBRUST_LOG\fR
+Controls logging verbosity. Set to \fBdebug\fR, \fBinfo\fR (default), \fBwarn\fR, or \fBerror\fR.
+
+.SH BUILDING FROM SOURCE
+.nf
+git clone https://github.com/devfrp/rj45-sound-card.git
+cd rj45-sound-card
+cargo build --release
+./target/release/rjsc --help
+.fi
+.PP
+To build without the GUI:
+.nf
+cargo build --release --no-default-features
+.fi
+
+.SH BUGS
+Report issues at \fBhttps://github.com/devfrp/rj45-sound-card/issues\fR.
+
+.SH LICENSE
+MIT
+
+.SH SEE ALSO
+.BR rjsc.toml (5),
+.BR jackd (1),
+.BR pulseaudio (1),
+.BR pipewire (1)

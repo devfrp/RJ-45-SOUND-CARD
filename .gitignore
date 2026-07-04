@@ -1,0 +1,6 @@
+/target
+/release
+*.swp
+*.swo
+*~
+.DS_Store

@@ -1,0 +1,22 @@
+[audio]
+input_device = "@default"
+output_device = "@default"
+channels = 2
+sample_rate = 48000
+buffer_frames = 256
+
+[network]
+audio_port = 42001
+control_port = 42002
+discovery_port = 42000
+bind_address = "0.0.0.0"
+
+[server]
+auto_accept = true
+max_clients = 4
+
+[client]
+server_address = ""
+use_virtual_device = true
+virtual_device_name = "RJ45 Virtual Audio"
+auto_reconnect = true
