@@ -5,8 +5,8 @@ Thanks for your interest in contributing! This document explains how to get star
 ## Development Setup
 
 ```bash
-git clone https://github.com/devfrp/rj45-sound-card.git
-cd rj45-sound-card
+git clone https://github.com/devfrp/RJ-45-SOUND-CARD.git
+cd RJ-45-SOUND-CARD
 cargo build
 cargo test
 cargo run -- --help

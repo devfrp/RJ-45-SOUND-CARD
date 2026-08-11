@@ -53,5 +53,5 @@ All notable changes to RJ45 Sound Card are documented here.
 - Cross-compilation for Windows (headless)
 - ARM64 support (Apple Silicon native)
 
-[1.0.1]: https://github.com/devfrp/rj45-sound-card/releases/tag/v1.0.1
-[1.0.0]: https://github.com/devfrp/rj45-sound-card/releases/tag/v1.0.0
+[1.0.1]: https://github.com/devfrp/RJ-45-SOUND-CARD/releases/tag/v1.0.1
+[1.0.0]: https://github.com/devfrp/RJ-45-SOUND-CARD/releases/tag/v1.0.0

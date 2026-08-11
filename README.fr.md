@@ -1,6 +1,8 @@
-> [🇬🇧 English version](README.md)
-
 # RJ45 Sound Card
+
+*Lire en : **Français** · [English](README.md)*
+
+🌐 **Site :** <https://devfrp.github.io/RJ-45-SOUND-CARD/>
 
 Partagez n'importe quelle carte son entre deux PC via Ethernet (RJ45).
 
@@ -52,8 +54,8 @@ rendant la carte son distante accessible comme si elle était locale.
 ### Compilation
 
 ```bash
-git clone https://github.com/devfrp/rj45-sound-card.git
-cd rj45-sound-card
+git clone https://github.com/devfrp/RJ-45-SOUND-CARD.git
+cd RJ-45-SOUND-CARD
 cargo build --release
 ./target/release/rjsc --help
 ```

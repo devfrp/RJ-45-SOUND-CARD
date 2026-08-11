@@ -74,7 +74,7 @@ Version: $VERSION
 Release: 1
 Summary: RJ45 Sound Card - $mode package
 License: MIT
-URL: https://github.com/devfrp/rj45-sound-card
+URL: https://github.com/devfrp/RJ-45-SOUND-CARD
 Group: Applications/Multimedia
 BuildArch: x86_64
 
@@ -120,7 +120,7 @@ make_arch() {
 pkgname = $pkg
 pkgver = $VERSION-1
 pkgdesc = RJ45 Sound Card - $mode package
-url = https://github.com/devfrp/rj45-sound-card
+url = https://github.com/devfrp/RJ-45-SOUND-CARD
 builddate = $(date +%Y-%m-%d)
 packager = RJ45 Sound Card Team
 size = $size
