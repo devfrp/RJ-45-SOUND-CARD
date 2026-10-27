@@ -4,502 +4,242 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RJ45 Sound Card</title>
-<meta name="description" content="RJ45 Sound Card — Network audio bridge. Share any sound card over Ethernet (RJ45) between Windows, Linux, and macOS. Low-latency UDP streaming.">
-<meta name="keywords" content="audio, ethernet, sound card, network, low latency, rust, RJ45, UDP, streaming">
-<meta name="author" content="devfrp">
-<meta property="og:title" content="RJ45 Sound Card — Share your sound card over Ethernet">
-<meta property="og:description" content="Low-latency network audio bridge. Turn an RJ45 cable into a professional multi-platform audio link.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='5' fill='%230d1013'/><path d='M8 22 v-8 h16 v8 M12 14 v-4 M16 14 v-4 M20 14 v-4' fill='none' stroke='%233ec1cf' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'/></svg>">
-<style>
-  :root{
-    /* light: cool datasheet */
-    --bg:#eceff2; --panel:#ffffff; --panel2:#f3f5f7; --term:#12161b;
-    --line:#d3dae0; --line2:#bcc6cf; --ink:#141a20; --dim:#5c6a76;
-    --amber:#0c7c8a; --amber-ink:#095f6a; --lock:#2f9e44;
-    --grid:#e2e7ec;
-    --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
-    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  }
-  @media (prefers-color-scheme:dark){
-    :root{
-      --bg:#0d1013; --panel:#14181d; --panel2:#191f26; --term:#0a0d10;
-      --line:#262e37; --line2:#3a4753; --ink:#ccd4da; --dim:#7c8791;
-      --amber:#3ec1cf; --amber-ink:#63d2de; --lock:#57c96a; --grid:#1a2027;
-    }
-  }
-  :root[data-theme="light"]{
-    --bg:#eceff2; --panel:#ffffff; --panel2:#f3f5f7; --term:#12161b;
-    --line:#d3dae0; --line2:#bcc6cf; --ink:#141a20; --dim:#5c6a76;
-    --amber:#0c7c8a; --amber-ink:#095f6a; --lock:#2f9e44; --grid:#e2e7ec;
-  }
-  :root[data-theme="dark"]{
-    --bg:#0d1013; --panel:#14181d; --panel2:#191f26; --term:#0a0d10;
-    --line:#262e37; --line2:#3a4753; --ink:#ccd4da; --dim:#7c8791;
-    --amber:#3ec1cf; --amber-ink:#63d2de; --lock:#57c96a; --grid:#1a2027;
-  }
-
-  *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
-    line-height:1.62;-webkit-font-smoothing:antialiased;font-size:16px}
-  a{color:var(--amber);text-decoration:none}
-  a:hover{text-decoration:underline}
-  :focus-visible{outline:2px solid var(--amber);outline-offset:2px}
-  .wrap{max-width:1000px;margin:0 auto;padding:0 22px}
-  .mono{font-family:var(--mono)}
-  .lab{font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
-
-  /* top bar */
-  .bar{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 88%,transparent);
-    backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-  .bar .wrap{display:flex;align-items:center;gap:18px;height:56px}
-  .logo{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-weight:600;
-    letter-spacing:.02em;color:var(--ink)}
-  .logo svg{display:block}
-  .bar nav{margin-left:auto;display:flex;gap:20px;align-items:center}
-  .bar nav a{font-family:var(--mono);font-size:.8rem;color:var(--dim);letter-spacing:.03em}
-  .bar nav a:hover{color:var(--ink);text-decoration:none}
-  .bar .gh{border:1px solid var(--line2);padding:6px 12px;border-radius:5px;color:var(--ink)}
-  .bar .gh:hover{border-color:var(--amber)}
-  #themetog{background:none;border:1px solid var(--line2);color:var(--dim);border-radius:5px;
-    width:30px;height:30px;cursor:pointer;font-size:.9rem}
-  #themetog:hover{color:var(--ink);border-color:var(--amber)}
-  .langsel{display:inline-flex;border:1px solid var(--line2);border-radius:5px;overflow:hidden;
-    font-family:var(--mono);font-size:.74rem}
-  .langsel a{padding:5px 9px;color:var(--dim);letter-spacing:.04em}
-  .langsel a:hover{color:var(--ink);text-decoration:none}
-  .langsel a.active{background:var(--amber);color:#0d1013}
-  @media(max-width:680px){.bar nav a.opt{display:none}}
-
-  /* hero */
-  .hero{border-bottom:1px solid var(--line);position:relative}
-  .hero .wrap{padding:60px 22px 0}
-  .tag{display:inline-flex;align-items:center;gap:9px}
-  .tag .led{width:8px;height:8px;border-radius:50%;background:var(--lock);
-    box-shadow:0 0 8px 1px color-mix(in srgb,var(--lock) 60%,transparent)}
-  h1{font-size:clamp(2.2rem,6.4vw,3.9rem);line-height:1.02;letter-spacing:-.02em;
-    margin:18px 0 0;text-wrap:balance;font-weight:800}
-  h1 .u{color:var(--amber)}
-  .sub{font-size:clamp(1.02rem,2.3vw,1.24rem);color:var(--dim);max-width:640px;margin:14px 0 0}
-  .cta{display:flex;flex-wrap:wrap;gap:11px;margin:26px 0 34px}
-  .btn{font-family:var(--mono);font-size:.86rem;border-radius:5px;padding:11px 18px;
-    border:1px solid var(--line2);color:var(--ink);cursor:pointer;background:var(--panel);
-    transition:border-color .12s,transform .12s;letter-spacing:.02em}
-  .btn:hover{text-decoration:none;transform:translateY(-1px);border-color:var(--amber)}
-  .btn.p{background:var(--amber);color:#0d1013;border-color:var(--amber);font-weight:600}
-
-  /* terminal command */
-  .term{background:var(--term);border:1px solid var(--line);border-radius:6px;
-    display:flex;align-items:center;gap:12px;padding:13px 13px 13px 16px;max-width:660px}
-  .term .p{color:var(--amber);font-family:var(--mono);user-select:none}
-  .term code{font-family:var(--mono);color:#d6dee6;font-size:.86rem;flex:1;overflow-x:auto;white-space:nowrap}
-  .term button{font-family:var(--mono);background:#20272f;border:1px solid #313b45;color:#9aa6b1;
-    border-radius:4px;padding:6px 11px;cursor:pointer;font-size:.76rem;white-space:nowrap}
-  .term button:hover{color:#fff;border-color:var(--amber)}
-
-  /* scope */
-  .scope{margin-top:40px;border-top:1px solid var(--line);position:relative;height:118px}
-  .scope canvas{display:block;width:100%;height:118px}
-  .scope .rd{position:absolute;top:10px;right:16px;font-family:var(--mono);font-size:.68rem;
-    letter-spacing:.12em;color:var(--dim)}
-
-  /* section scaffold */
-  .sec{border-bottom:1px solid var(--line);padding:56px 0}
-  .head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
-  .head .idx{font-family:var(--mono);font-size:.72rem;color:var(--amber);letter-spacing:.1em}
-  h2{font-size:clamp(1.45rem,3.6vw,2rem);margin:0;letter-spacing:-.01em;font-weight:750;text-wrap:balance}
-  .lede{color:var(--dim);max-width:640px;margin:14px 0 30px}
-  h3.sub-h{font-family:var(--mono);font-size:.8rem;letter-spacing:.06em;color:var(--dim);
-    text-transform:uppercase;margin:30px 0 12px}
-
-  /* modules */
-  .mods{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;
-    grid-template-columns:repeat(auto-fit,minmax(250px,1fr));overflow:hidden}
-  .mod{background:var(--panel);padding:22px}
-  .mod:hover{background:var(--panel2)}
-  .mod .lab{margin-bottom:9px}
-  .mod h3{margin:0 0 5px;font-size:1.04rem}
-  .mod p{margin:0;color:var(--dim);font-size:.92rem}
-  .mod h3 code,.mod p code{font-family:var(--mono);font-size:.86em;color:var(--amber-ink)}
-
-  /* register readout table */
-  .rdout{border:1px solid var(--line);border-radius:6px;overflow:hidden;overflow-x:auto}
-  .rdout table{width:100%;border-collapse:collapse;min-width:520px}
-  .rdout th{font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;
-    color:var(--dim);text-align:left;padding:11px 16px;background:var(--panel2);border-bottom:1px solid var(--line)}
-  .rdout td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:top;font-size:.92rem}
-  .rdout tr:last-child td{border-bottom:none}
-  .rdout tr:hover td{background:var(--panel2)}
-  .rdout .v{font-family:var(--mono);color:var(--amber);white-space:nowrap;font-size:.86rem}
-  .rdout td b{font-weight:650} .rdout td span{color:var(--dim)}
-
-  /* signal flow */
-  .flow{display:grid;gap:12px}
-  .node{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:16px 18px;
-    display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center}
-  .node .n{font-family:var(--mono);font-size:.82rem;color:var(--amber);white-space:nowrap}
-  .node .d{color:var(--dim);font-size:.92rem}
-  .node.hw{border-color:var(--amber);border-left-width:3px}
-  .flow .arrow{font-family:var(--mono);color:var(--line2);text-align:center;font-size:.8rem;line-height:1.5}
-  .flow .arrow .lab{display:block}
-  @media(max-width:560px){.node{grid-template-columns:1fr}.node .n{white-space:normal}}
-
-  /* cols */
-  .cols{display:grid;gap:18px;grid-template-columns:1fr 1fr}
-  @media(max-width:680px){.cols{grid-template-columns:1fr}}
-  pre.blk{background:var(--term);border:1px solid var(--line);border-radius:6px;padding:16px;
-    overflow-x:auto;font-family:var(--mono);font-size:.82rem;color:#d6dee6;line-height:1.7;margin:0}
-  pre.blk .c{color:#6f7c88} pre.blk .f{color:var(--amber)}
-  .cols h3{font-family:var(--mono);font-size:.8rem;letter-spacing:.06em;color:var(--dim);
-    text-transform:uppercase;margin:0 0 10px}
-  .cols .gap{margin-top:18px}
-
-  /* faq */
-  .faq{display:grid;gap:12px}
-  .qa{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:18px 20px}
-  .qa h3{margin:0 0 7px;font-size:1rem;font-weight:650}
-  .qa h3::before{content:"Q ";font-family:var(--mono);font-size:.78rem;color:var(--amber);letter-spacing:.1em}
-  .qa p{margin:0;color:var(--dim);font-size:.93rem}
-  .qa code{font-family:var(--mono);font-size:.86em;color:var(--amber-ink)}
-
-  /* docs browser */
-  .docs{display:grid;grid-template-columns:250px 1fr;gap:18px;align-items:start}
-  @media(max-width:680px){.docs{grid-template-columns:1fr}}
-  .docs-side{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:16px 18px}
-  .docs-side .lab{margin:14px 0 6px}
-  .docs-side .lab:first-child{margin-top:0}
-  .docs-side a{display:block;font-size:.9rem;padding:3px 0;color:var(--ink)}
-  .docs-side a:hover{color:var(--amber);text-decoration:none}
-  .docs-main{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:22px 24px;min-height:260px}
-  .md h1,.md h2,.md h3{letter-spacing:-.01em;margin:1.2em 0 .5em}
-  .md h1:first-child,.md h2:first-child{margin-top:0}
-  .md h1{font-size:1.5rem}.md h2{font-size:1.2rem}.md h3{font-size:1.02rem}
-  .md p{margin:.6em 0;color:var(--ink);font-size:.94rem}
-  .md li{font-size:.94rem}
-  .md code{font-family:var(--mono);font-size:.86em;color:var(--amber-ink);background:var(--panel2);
-    border:1px solid var(--line);border-radius:4px;padding:1px 5px}
-  .md pre{background:var(--term);border:1px solid var(--line);border-radius:6px;padding:14px;
-    overflow-x:auto;margin:.8em 0}
-  .md pre code{background:none;border:none;padding:0;color:#d6dee6;font-size:.82rem;line-height:1.6}
-  .md blockquote{border-left:3px solid var(--amber);margin:.8em 0;padding:2px 14px;color:var(--dim)}
-  .md hr{border:none;border-top:1px solid var(--line);margin:1.2em 0}
-  .md img{max-width:100%}
-  .md .tbl{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:.8em 0}
-  .md table{width:100%;border-collapse:collapse}
-  .md th{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;
-    color:var(--dim);text-align:left;padding:9px 12px;background:var(--panel2);border-bottom:1px solid var(--line)}
-  .md td{padding:9px 12px;border-bottom:1px solid var(--line);font-size:.9rem}
-  .md tr:last-child td{border-bottom:none}
-
-  footer{padding:40px 0 64px;color:var(--dim);font-size:.88rem}
-  footer .wrap{display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between;align-items:flex-start}
-  footer .disc{max-width:540px}
-  footer .links{font-family:var(--mono);font-size:.82rem;display:flex;gap:8px;flex-wrap:wrap}
-  .kbd{font-family:var(--mono);background:var(--panel2);border:1px solid var(--line2);
-    padding:1px 6px;border-radius:4px;font-size:.85em;color:var(--ink)}
-</style>
+<meta name="description" content="Share any sound card over Ethernet: low-latency UDP streaming, auto-discovery, bidirectional 48 kHz audio, a single Rust binary.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23234a8a'/><path d='M8 22 v-8 h16 v8 M11 14 v-4 h10 v4' fill='none' stroke='%23f4f7fb' stroke-width='2'/></svg>">
+<script>try{var t=localStorage.getItem('rjsc-theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-<header class="bar"><div class="wrap">
-  <a class="logo" href="#top">
-    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="5" fill="var(--panel2)" stroke="var(--line2)"/><path d="M8 22 v-8 h16 v8 M12 14 v-4 M16 14 v-4 M20 14 v-4" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
-    rj45-sound-card
-  </a>
-  <nav>
-    <a class="opt" href="#features">Features</a>
-    <a class="opt" href="#usage">Usage</a>
-    <a href="#install">Install</a>
-    <a href="#docs">Docs</a>
-    <span class="langsel" role="group" aria-label="Language">
-      <a href="index.html">FR</a>
-      <a href="index.en.html" class="active" aria-current="page">EN</a>
-    </span>
-    <a class="gh" href="https://github.com/devfrp/RJ-45-SOUND-CARD">GitHub&nbsp;↗</a>
-    <button id="themetog" title="Toggle theme" aria-label="Toggle light/dark theme">◐</button>
-  </nav>
-</div></header>
+<a class="skip" href="#top">Skip to content</a>
+<header class="bar">
+  <div class="container bar__row">
+    <a class="wordmark" href="#top" aria-label="rj45-sound-card, back to top">rj45-sound-card</a>
+    <nav class="bar__links" aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#usage">Usage</a>
+      <a href="#install">Install</a>
+      <a href="#docs">Docs</a>
+    </nav>
+    <div class="bar__tools">
+      <span class="lang" role="group" aria-label="Language"><a href="index.html" lang="fr">FR</a><a href="index.en.html" lang="en" aria-current="true">EN</a></span>
+      <button id="themetog" class="mode" type="button" title="Toggle theme" aria-label="Switch sheet">Sheet</button>
+      <a class="gh" href="https://github.com/devfrp/RJ-45-SOUND-CARD">GitHub</a>
+    </div>
+  </div>
+</header>
 
 <main id="top">
-<section class="hero">
-  <div class="wrap">
-    <span class="tag"><span class="led"></span><span class="lab">v1.0.0 · MIT · Rust 1.96+ · Windows / Linux / macOS</span></span>
-    <h1>Share any <span class="u">sound card</span><br>over Ethernet.</h1>
-    <p class="sub">The server PC shares its physical sound card — MOTU, RME, Focusrite, Universal Audio,
-    PreSonus, Behringer — with a remote PC that sees it as a local device. Low-latency UDP streaming
-    (~1.3 ms), auto-discovery over the network, bidirectional 48 kHz / 32-bit float audio.
-    A single Rust binary and zero dependencies.</p>
-    <div class="cta">
-      <a class="btn p" href="https://github.com/devfrp/RJ-45-SOUND-CARD/releases/latest">Download</a>
-      <a class="btn" href="#usage">See usage</a>
-      <a class="btn" href="https://github.com/devfrp/RJ-45-SOUND-CARD">Source code</a>
+  <section class="hero">
+    <div class="container hero__grid">
+      <div>
+        <h1>Share any sound card over Ethernet.</h1>
+        <p class="lead">The laptop sees the studio’s sound card as a local device.</p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href="https://github.com/devfrp/RJ-45-SOUND-CARD/releases/latest">Download</a>
+          <a class="btn" href="#usage">See usage</a>
+          <a class="link" href="https://github.com/devfrp/RJ-45-SOUND-CARD">Source code</a>
+        </div>
+      </div>
+      <dl class="facts">
+        <div><dt>Latency</dt><dd>~1.3 ms</dd></div>
+        <div><dt>Audio</dt><dd>48 kHz / 32-bit float</dd></div>
+        <div><dt>Version</dt><dd>v1.0.0</dd></div>
+        <div><dt>License</dt><dd>MIT</dd></div>
+        <div><dt>Build</dt><dd>Rust 1.96+</dd></div>
+        <div><dt>Systems</dt><dd>Windows / Linux / macOS</dd></div>
+      </dl>
     </div>
-    <div class="term">
-      <span class="p">$</span>
-      <code id="cmd">git clone https://github.com/devfrp/RJ-45-SOUND-CARD.git &amp;&amp; cd rj45-sound-card &amp;&amp; cargo build --release</code>
-      <button id="cpb" onclick="cp()">copy</button>
+    <div class="container">
+      <div class="cmd">
+        <code id="cmd">git clone https://github.com/devfrp/RJ-45-SOUND-CARD.git &amp;&amp; cd rj45-sound-card &amp;&amp; cargo build --release</code>
+        <button id="cpb" type="button" onclick="cp()">copy</button>
+      </div>
     </div>
-  </div>
-  <div class="scope" aria-hidden="true">
-    <span class="rd">TX/RX · PCM f32 · 48 kHz · UDP 42001 · ~1.3 ms</span>
-    <canvas id="scope"></canvas>
-  </div>
-</section>
+  </section>
 
-<section class="sec" id="about"><div class="wrap">
-  <div class="head"><span class="idx">00</span><h2>An RJ45 cable, a professional audio link</h2></div>
-  <p class="lede">RJ45 Sound Card turns a simple Ethernet cable into a multi-platform audio link.
-  Just three network channels: discovery over UDP broadcast, audio over pure UDP, control over TCP.
-  The client finds the server by itself and the remote sound card shows up as a local device —
-  ideal for real-time monitoring between the studio and a laptop.</p>
-</div></section>
+  <section class="section section--s" id="arch">
+    <div class="container">
+      <div class="about" id="about">
+        <h2>An RJ45 cable, a professional audio link</h2>
+        <p>RJ45 Sound Card turns a simple Ethernet cable into a multi-platform audio link. Just three network channels: discovery over UDP broadcast, audio over pure UDP, control over TCP. The client finds the server by itself and the remote sound card shows up as a local device, ideal for real-time monitoring between the studio and a laptop.</p>
+      </div>
+      <div class="head">
+        <h2>Architecture</h2>
+        <p class="lead">Server and client linked by three channels: discovery, audio, control.</p>
+      </div>
+      <figure class="drawing" aria-label="Diagram of the link between server and client">
+        <div class="link-map">
+          <div class="node">
+            <h3>Server</h3><span class="role">Studio PC</span>
+            <p>physical sound card (MOTU, RME, …)</p>
+            <ul><li>capture → UDP TX</li><li>UDP RX → playback</li></ul>
+          </div>
+          <div class="wire">
+            <span class="wire__name">RJ45 (Ethernet)</span>
+            <div class="dim" aria-hidden="true"></div>
+            <ul class="ports">
+              <li><b>UDP 42000</b> <span>discovery</span></li>
+              <li><b>UDP 42001</b> <span>audio stream</span></li>
+              <li><b>TCP 42002</b> <span>control</span></li>
+            </ul>
+          </div>
+          <div class="node">
+            <h3>Client</h3><span class="role">Laptop</span>
+            <p>virtual audio device (snd-aloop / BlackHole / VB-Cable)</p>
+            <ul><li>UDP RX → local playback</li><li>capture → UDP TX</li></ul>
+          </div>
+        </div>
+      </figure>
+      <div class="after-drawing">
+        <h3 class="subhead">Network ports</h3>
+        <table class="register">
+          <thead><tr><th scope="col">Port</th><th scope="col">Protocol</th><th scope="col">Usage</th></tr></thead>
+          <tbody>
+            <tr><td class="num">42000</td><td>UDP</td><td>Service discovery (JSON broadcast every 3 s)</td></tr>
+            <tr><td class="num">42001</td><td>UDP</td><td>Audio stream (raw PCM f32)</td></tr>
+            <tr><td class="num">42002</td><td>TCP</td><td>Control (JSON messages, length-prefixed format)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 
-<section class="sec" id="features"><div class="wrap">
-  <div class="head"><span class="idx">01</span><h2>Features</h2></div>
-  <div class="mods">
-    <div class="mod"><div class="lab">Platforms</div><h3>Cross-platform</h3>
-      <p>Windows, Linux and macOS. A single Rust binary, no external dependencies.</p></div>
-    <div class="mod"><div class="lab">Hardware</div><h3>All sound cards</h3>
-      <p>MOTU, RME, Focusrite, Universal Audio, Presonus, Behringer... compatible with any device recognized by the OS.</p></div>
-    <div class="mod"><div class="lab">Stream</div><h3>Bidirectional</h3>
-      <p>Audio from studio to laptop AND mic/input capture from laptop sent back to studio.</p></div>
-    <div class="mod"><div class="lab">Latency</div><h3>Low latency</h3>
-      <p>Pure UDP streaming with configurable buffers (64–1024 frames). Ideal for real-time monitoring.</p></div>
-    <div class="mod"><div class="lab">Network</div><h3>Auto-discovery</h3>
-      <p>The client automatically finds servers on the local network via UDP broadcast.</p></div>
-    <div class="mod"><div class="lab">Client</div><h3>Virtual device</h3>
-      <p>The remote sound card appears as a local device (ALSA loopback, BlackHole, VB-Cable).</p></div>
-  </div>
-</div></section>
+  <section class="section" id="features">
+    <div class="container">
+      <div class="head"><h2>Features</h2></div>
+      <div class="cells">
+        <div><h3>Cross-platform</h3><p>Windows, Linux and macOS. A single Rust binary, no external dependencies.</p></div>
+        <div><h3>All sound cards</h3><p>MOTU, RME, Focusrite, Universal Audio, Presonus, Behringer… compatible with any device recognized by the OS.</p></div>
+        <div><h3>Bidirectional</h3><p>Audio from studio to laptop AND mic/input capture from laptop sent back to studio.</p></div>
+        <div><h3>Low latency</h3><p>Pure UDP streaming with configurable buffers (64 to 1024 frames). Ideal for real-time monitoring.</p></div>
+        <div><h3>Auto-discovery</h3><p>The client automatically finds servers on the local network via UDP broadcast.</p></div>
+        <div><h3>Virtual device</h3><p>The remote sound card appears as a local device (ALSA loopback, BlackHole, VB-Cable).</p></div>
+      </div>
+    </div>
+  </section>
 
-<section class="sec" id="arch"><div class="wrap">
-  <div class="head"><span class="idx">02</span><h2>Architecture</h2></div>
-  <p class="lede">Server and client linked by three channels: discovery, audio, control.</p>
-  <div class="flow">
-    <div class="node hw"><span class="n">SERVER · Studio PC</span><span class="d">physical sound card (MOTU, RME, …) — capture → <code class="mono">UDP TX</code> · <code class="mono">UDP RX</code> → playback</span></div>
-    <div class="arrow">↕<span class="lab">RJ45 (Ethernet) — UDP 42000 discovery · UDP 42001 audio stream · TCP 42002 control</span></div>
-    <div class="node"><span class="n">CLIENT · Laptop</span><span class="d">virtual audio device (snd-aloop / BlackHole / VB-Cable) — <code class="mono">UDP RX</code> → local playback · capture → <code class="mono">UDP TX</code></span></div>
-  </div>
-  <h3 class="sub-h">Network ports</h3>
-  <div class="rdout"><table>
-    <thead><tr><th>Port</th><th>Protocol</th><th>Usage</th></tr></thead>
-    <tbody>
-      <tr><td class="v">42000</td><td class="v">UDP</td><td>Service discovery <span>(JSON broadcast every 3s)</span></td></tr>
-      <tr><td class="v">42001</td><td class="v">UDP</td><td>Audio stream <span>(raw PCM f32)</span></td></tr>
-      <tr><td class="v">42002</td><td class="v">TCP</td><td>Control <span>(JSON messages, length-prefixed format)</span></td></tr>
-    </tbody>
-  </table></div>
-</div></section>
-
-<section class="sec" id="install"><div class="wrap">
-  <div class="head"><span class="idx">03</span><h2>Install</h2></div>
-  <div class="cols">
-    <div>
-      <h3>Build</h3>
-      <pre class="blk">git clone https://github.com/<span class="f">devfrp/RJ-45-SOUND-CARD</span>.git
+  <section class="section" id="install">
+    <div class="container">
+      <div class="head"><h2>Installation</h2></div>
+      <div class="two">
+        <figure class="code"><figcaption>Build</figcaption><pre>git clone https://github.com/devfrp/RJ-45-SOUND-CARD.git
 cd rj45-sound-card
 cargo build --release
-./target/release/rjsc --help</pre>
-    </div>
-    <div>
-      <h3>Virtual audio device (client)</h3>
-      <pre class="blk"><span class="c"># Linux 🐧</span>
+./target/release/rjsc --help</pre></figure>
+        <figure class="code"><figcaption>Virtual audio device (client)</figcaption><pre><span class="c"># Linux</span>
 sudo ./scripts/linux_setup.sh install
 
-<span class="c"># macOS 🍎</span>
+<span class="c"># macOS</span>
 sudo ./scripts/mac_setup.sh install
 
-<span class="c"># Windows 🪟</span>
-powershell -ExecutionPolicy Bypass -File scripts\windows_setup.ps1 install</pre>
-    </div>
-  </div>
-</div></section>
-
-<section class="sec" id="usage"><div class="wrap">
-  <div class="head"><span class="idx">04</span><h2>Usage</h2></div>
-  <div class="cols">
-    <div>
-      <h3>1 · List devices</h3>
-      <pre class="blk"><span class="c"># On both machines</span>
-rjsc list</pre>
-      <div class="gap">
-      <h3>2 · Configure</h3>
-      <pre class="blk">rjsc init  <span class="c"># generates rjsc.toml</span></pre>
+<span class="c"># Windows</span>
+powershell -ExecutionPolicy Bypass -File scripts\windows_setup.ps1 install</pre></figure>
       </div>
-      <div class="gap">
-      <h3>3 · Server (Studio PC)</h3>
-      <pre class="blk"><span class="c"># Share the sound card (MOTU, RME...)</span>
-rjsc serve</pre>
-      </div>
-    </div>
-    <div>
-      <h3>4 · Client (Laptop)</h3>
-      <pre class="blk"><span class="c"># Automatic connection</span>
+      <div class="usage" id="usage">
+        <h2 class="subhead">Usage</h2>
+        <table class="register">
+          <thead><tr><th scope="col">Step</th><th scope="col">Action</th><th scope="col">Command</th></tr></thead>
+          <tbody><tr><td>1</td><td>List devices</td><td><pre><span class="c"># On both machines</span>
+rjsc list</pre></td></tr><tr><td>2</td><td>Configure</td><td><pre>rjsc init  <span class="c"># generates rjsc.toml</span></pre></td></tr><tr><td>3</td><td>Server (Studio PC)</td><td><pre><span class="c"># Share the sound card (MOTU, RME…)</span>
+rjsc serve</pre></td></tr><tr><td>4</td><td>Client (Laptop)</td><td><pre><span class="c"># Automatic connection</span>
 rjsc connect
 
 <span class="c"># Or direct address</span>
-rjsc connect --server 192.168.1.100:42002</pre>
-      <div class="gap">
-      <h3>5 · GUI</h3>
-      <pre class="blk"><span class="c"># Control panel</span>
-rjsc gui</pre>
+rjsc connect --server 192.168.1.100:42002</pre></td></tr><tr><td>5</td><td>GUI</td><td><pre><span class="c"># Control panel</span>
+rjsc gui</pre></td></tr></tbody>
+        </table>
+        
       </div>
     </div>
-  </div>
-</div></section>
+  </section>
 
-<section class="sec" id="latency"><div class="wrap">
-  <div class="head"><span class="idx">05</span><h2>Latency</h2></div>
-  <p class="lede">For 48 channels @ 48 kHz: ~55 Mbps, well within Gigabit Ethernet capacity.</p>
-  <div class="rdout"><table>
-    <thead><tr><th>Buffer</th><th>Latency (48 kHz)</th><th>Usage</th></tr></thead>
-    <tbody>
-      <tr><td class="v">64 frames</td><td class="v">~1.3 ms</td><td>Real-time monitoring</td></tr>
-      <tr><td class="v">128 frames</td><td class="v">~2.7 ms</td><td>Optimal performance</td></tr>
-      <tr><td class="v">256 frames</td><td class="v">~5.3 ms</td><td>Standard usage</td></tr>
-      <tr><td class="v">512 frames</td><td class="v">~10.7 ms</td><td>Non-optimized network</td></tr>
-      <tr><td class="v">1024 frames</td><td class="v">~21.3 ms</td><td>Troubleshooting</td></tr>
-    </tbody>
-  </table></div>
-</div></section>
+  <section class="section" id="latency">
+    <div class="container">
+      <div class="head"><h2>Latency</h2><p class="lead">For 48 channels @ 48 kHz: ~55 Mbps, well within Gigabit Ethernet capacity.</p></div>
+      <div class="span" aria-hidden="true">
+        <div class="span__ends"><span><b>1.3</b> <small>ms, 64 frames</small></span><span><b>21.3</b> <small>ms, 1024 frames</small></span></div>
+        <div class="dim"></div>
+        <p class="span__label">buffer from 64 to 1024 frames, at 48 kHz</p>
+      </div>
+      <table class="register">
+        <thead><tr><th scope="col">Buffer</th><th scope="col">Latency (48 kHz)</th><th scope="col">Usage</th></tr></thead>
+        <tbody><tr><td class="num">64 frames</td><td class="num">~1.3 ms</td><td>Real-time monitoring</td></tr><tr><td class="num">128 frames</td><td class="num">~2.7 ms</td><td>Optimal performance</td></tr><tr><td class="num">256 frames</td><td class="num">~5.3 ms</td><td>Standard usage</td></tr><tr><td class="num">512 frames</td><td class="num">~10.7 ms</td><td>Non-optimized network</td></tr><tr><td class="num">1024 frames</td><td class="num">~21.3 ms</td><td>Troubleshooting</td></tr></tbody>
+      </table>
+      <div class="example" id="example">
+        <h2 class="subhead">Concrete example: studio → laptop</h2>
+        <p>The studio PC (server) shares its physical sound card (e.g. MOTU, RME, Focusrite…) with a laptop (client) via RJ45. The client sees the remote sound card as a local device thanks to the virtual audio device. Latency is configurable down to ~1.3 ms over Gigabit Ethernet.</p>
+      </div>
+    </div>
+  </section>
 
-<section class="sec" id="example"><div class="wrap">
-  <div class="head"><span class="idx">06</span><h2>Concrete example · Studio → Laptop</h2></div>
-  <p class="lede">The studio PC (server) shares its physical sound card (e.g. MOTU, RME, Focusrite...)
-  with a laptop (client) via RJ45. The client sees the remote sound card as a local device thanks to
-  the virtual audio device. Latency is configurable down to ~1.3 ms over Gigabit Ethernet.</p>
-</div></section>
+  <section class="section" id="specs">
+    <div class="container">
+      <div class="head"><h2>Technical specifications</h2></div>
+      <table class="register register--wide">
+        <thead><tr><th scope="col">Specification</th><th scope="col">Value</th></tr></thead>
+        <tbody><tr><td>Language</td><td>Rust (edition 2021)</td></tr><tr><td>Build</td><td>Rust 1.96+, <code>cargo build --release</code></td></tr><tr><td>Supported OS</td><td>Windows 10/11, Linux (kernel 5.10+), macOS 12+</td></tr><tr><td>Architectures</td><td>x86_64 (AMD64), ARM64 (Apple Silicon native)</td></tr><tr><td>Sample rate</td><td>44.1 kHz, 48 kHz, 88.2 kHz, 96 kHz, 176.4 kHz, 192 kHz</td></tr><tr><td>Audio format</td><td>PCM f32 (32-bit float), stereo by default</td></tr><tr><td>Channels</td><td>1 (mono) to 48 simultaneous channels</td></tr><tr><td>Buffer</td><td>64 to 1024 frames (configurable)</td></tr><tr><td>Minimum latency</td><td>~1.3 ms @ 48 kHz / 64 frames (Gigabit Ethernet)</td></tr><tr><td>Bandwidth</td><td>~55 Mbps for 48 channels @ 48 kHz</td></tr><tr><td>Discovery protocol</td><td>UDP JSON broadcast (port 42000), every 3 seconds</td></tr><tr><td>Audio protocol</td><td>UDP raw PCM stream (port 42001)</td></tr><tr><td>Control protocol</td><td>TCP JSON messages length-prefixed (port 42002)</td></tr><tr><td>Virtual device</td><td>ALSA snd-aloop (Linux), BlackHole (macOS), VB-Cable (Windows)</td></tr><tr><td>GUI</td><td>egui / eframe (Rust), real-time control panel</td></tr><tr><td>License</td><td>MIT</td></tr></tbody>
+      </table>
+    </div>
+  </section>
 
-<section class="sec" id="specs"><div class="wrap">
-  <div class="head"><span class="idx">07</span><h2>Technical specifications</h2></div>
-  <div class="rdout"><table>
-    <thead><tr><th>Specification</th><th>Value</th></tr></thead>
-    <tbody>
-      <tr><td><b>Language</b></td><td>Rust (edition 2021)</td></tr>
-      <tr><td><b>Build</b></td><td class="v">Rust 1.96+, cargo build --release</td></tr>
-      <tr><td><b>Supported OS</b></td><td>Windows 10/11, Linux (kernel 5.10+), macOS 12+</td></tr>
-      <tr><td><b>Architectures</b></td><td>x86_64 (AMD64), ARM64 (Apple Silicon native)</td></tr>
-      <tr><td><b>Sample rate</b></td><td>44.1 kHz, 48 kHz, 88.2 kHz, 96 kHz, 176.4 kHz, 192 kHz</td></tr>
-      <tr><td><b>Audio format</b></td><td>PCM f32 (32-bit float), stereo by default</td></tr>
-      <tr><td><b>Channels</b></td><td>1 (mono) to 48 simultaneous channels</td></tr>
-      <tr><td><b>Buffer</b></td><td>64 — 1024 frames (configurable)</td></tr>
-      <tr><td><b>Minimum latency</b></td><td class="v">~1.3 ms @ 48 kHz / 64 frames (Gigabit Ethernet)</td></tr>
-      <tr><td><b>Bandwidth</b></td><td>~55 Mbps for 48 channels @ 48 kHz</td></tr>
-      <tr><td><b>Discovery protocol</b></td><td>UDP JSON broadcast (port 42000), every 3 seconds</td></tr>
-      <tr><td><b>Audio protocol</b></td><td>UDP raw PCM stream (port 42001)</td></tr>
-      <tr><td><b>Control protocol</b></td><td>TCP JSON messages length-prefixed (port 42002)</td></tr>
-      <tr><td><b>Virtual device</b></td><td>ALSA snd-aloop (Linux), BlackHole (macOS), VB-Cable (Windows)</td></tr>
-      <tr><td><b>GUI</b></td><td>egui / eframe (Rust), real-time control panel</td></tr>
-      <tr><td><b>License</b></td><td class="v">MIT</td></tr>
-    </tbody>
-  </table></div>
-</div></section>
+  <section class="section" id="faq">
+    <div class="container faq">
+      <h2>FAQ</h2>
+      <div>
+<details open><summary>What is the actual latency in practice?</summary><p>Over Gigabit Ethernet with a 64-frame buffer: ~1.3 ms. With a 128-frame buffer: ~2.7 ms. Latency mainly depends on cable quality and network load. A dedicated Cat6 or Cat7 cable is recommended.</p></details>
+<details><summary>Can I use Wi-Fi instead of Ethernet?</summary><p>Technically yes, but it is strongly discouraged. Wi-Fi introduces jitter and packet loss that degrade audio. Gigabit Ethernet is required for professional-grade latency.</p></details>
+<details><summary>How many simultaneous audio channels?</summary><p>Up to 48 simultaneous channels in 48 kHz stereo. The required bandwidth is about 55 Mbps, well below the 1000 Mbps of Gigabit Ethernet.</p></details>
+<details><summary>Does it work with an external USB sound card?</summary><p>Yes. The server shares any device recognized by the OS: internal PCIe cards, USB interfaces, FireWire, Thunderbolt. The client receives the stream as a local device.</p></details>
+<details><summary>How to configure the virtual audio device on the client?</summary><p>Linux: <code>sudo ./scripts/linux_setup.sh install</code> (installs snd-aloop). macOS: <code>sudo ./scripts/mac_setup.sh install</code> (installs BlackHole). Windows: provided PowerShell script (VB-Cable).</p></details>
+<details><summary>Is the project stable for production use?</summary><p>The project is functional for monitoring and light production sessions. We recommend prior testing before any use in critical environments.</p></details>
+      </div>
+    </div>
+  </section>
 
-<section class="sec" id="faq"><div class="wrap">
-  <div class="head"><span class="idx">08</span><h2>FAQ</h2></div>
-  <div class="faq">
-    <div class="qa"><h3>What is the actual latency in practice?</h3>
-      <p>Over Gigabit Ethernet with a 64-frame buffer: ~1.3 ms. With a 128-frame buffer: ~2.7 ms.
-      Latency mainly depends on cable quality and network load. A dedicated Cat6 or Cat7 cable is
-      recommended.</p></div>
-    <div class="qa"><h3>Can I use Wi-Fi instead of Ethernet?</h3>
-      <p>Technically yes, but it is strongly discouraged. Wi-Fi introduces jitter and packet loss that
-      degrade audio. Gigabit Ethernet is required for professional-grade latency.</p></div>
-    <div class="qa"><h3>How many simultaneous audio channels?</h3>
-      <p>Up to 48 simultaneous channels in 48 kHz stereo. The required bandwidth is about 55 Mbps, well
-      below the 1000 Mbps of Gigabit Ethernet.</p></div>
-    <div class="qa"><h3>Does it work with an external USB sound card?</h3>
-      <p>Yes. The server shares any device recognized by the OS — internal PCIe cards, USB interfaces,
-      FireWire, Thunderbolt. The client receives the stream as a local device.</p></div>
-    <div class="qa"><h3>How to configure the virtual audio device on the client?</h3>
-      <p>Linux: <code>sudo ./scripts/linux_setup.sh install</code> (installs snd-aloop).
-      macOS: <code>sudo ./scripts/mac_setup.sh install</code> (installs BlackHole).
-      Windows: provided PowerShell script (VB-Cable).</p></div>
-    <div class="qa"><h3>Is the project stable for production use?</h3>
-      <p>The project is functional for monitoring and light production sessions. We recommend prior
-      testing before any use in critical environments.</p></div>
-  </div>
-</div></section>
-
-<section class="sec" id="docs"><div class="wrap">
-  <div class="head"><span class="idx">09</span><h2>Documentation</h2></div>
-  <p class="lede">Select a document to view its content.</p>
-  <div class="docs">
-    <div class="docs-side" id="docSide"></div>
-    <div class="docs-main"><div class="md" id="docMain">
-      <h2>📚 RJ45 Sound Card Documentation</h2>
-      <p>Select a document to view its content.</p>
-    </div></div>
-  </div>
-</div></section>
+  <section class="section" id="docs">
+    <div class="container">
+      <div class="head"><h2>Documentation</h2><p class="lead">Select a document to view its content.</p></div>
+      <div class="docs">
+        <div class="docs-side" id="docSide"></div>
+        <div class="docs-main"><div class="md" id="docMain">
+          <h2>RJ45 Sound Card documentation</h2>
+          <p>Pick a guide, a reference or a developer page from the list.</p>
+        </div></div>
+      </div>
+    </div>
+  </section>
 </main>
 
-<footer><div class="wrap">
-  <div class="disc"><b class="mono"><a href="https://github.com/devfrp/RJ-45-SOUND-CARD">RJ45 Sound Card</a></b> — MIT License —
-    Built with <a href="https://www.rust-lang.org/">Rust</a>,
-    <a href="https://github.com/RustAudio/cpal">cpal</a>,
-    <a href="https://tokio.rs/">Tokio</a> and
-    <a href="https://github.com/emilk/egui">egui</a></div>
-  <div class="links">
-    <a href="https://github.com/devfrp/RJ-45-SOUND-CARD">GitHub</a><span>·</span>
-    <a href="https://github.com/devfrp/RJ-45-SOUND-CARD/releases/latest">Releases</a><span>·</span>
-    <a href="https://devfrp.github.io">devfrp.github.io</a>
+<footer class="foot">
+  <div class="container">
+    <p class="foot__line"><a href="https://github.com/devfrp/RJ-45-SOUND-CARD">RJ45 Sound Card</a>, MIT License.</p>
+    <p class="foot__built">Built with <a href="https://www.rust-lang.org/">Rust</a>, <a href="https://github.com/RustAudio/cpal">cpal</a>, <a href="https://tokio.rs/">Tokio</a> and <a href="https://github.com/emilk/egui">egui</a>.</p>
+    <nav class="foot__links" aria-label="Links">
+      <a href="https://github.com/devfrp/RJ-45-SOUND-CARD">GitHub</a>
+      <a href="https://github.com/devfrp/RJ-45-SOUND-CARD/releases/latest">Releases</a>
+      <a href="https://devfrp.github.io">devfrp.github.io</a>
+    </nav>
   </div>
-</div></footer>
+</footer>
 
 <script>
 (function(){
-  // theme (persisted, legacy rjsc-theme key)
+  // theme (persisted, historical key rjsc-theme)
   var root=document.documentElement, tog=document.getElementById('themetog');
-  var saved=null; try{saved=localStorage.getItem('rjsc-theme');}catch(e){}
-  if(saved==='dark'||saved==='light') root.setAttribute('data-theme',saved);
-  function cur(){var t=root.getAttribute('data-theme');
-    if(t) return t;
-    return matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';}
   tog.addEventListener('click',function(){
-    var n=cur()==='dark'?'light':'dark';
+    var n=root.getAttribute('data-theme')==='light'?'dark':'light';
     root.setAttribute('data-theme',n);
     try{localStorage.setItem('rjsc-theme',n);}catch(e){}
-    draw(true);
   });
 
   // copy
   window.cp=function(){var b=document.getElementById('cpb');
     navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(function(){
-      b.textContent='copied ✓'; setTimeout(function(){b.textContent='copy';},1500);});};
+      b.textContent='copied'; setTimeout(function(){b.textContent='copy';},1500);});};
 
-  // scope: two TX/RX traces
-  var cv=document.getElementById('scope'), ctx=cv.getContext('2d'), t=0, raf=null;
-  var reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
-  function css(v,fb){return getComputedStyle(root).getPropertyValue(v).trim()||fb;}
-  function size(){var d=Math.min(devicePixelRatio||1,2);
-    cv.width=cv.clientWidth*d; cv.height=cv.clientHeight*d; ctx.setTransform(d,0,0,d,0,0);}
-  function trace(w,h,phase,amp,color){
-    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.lineJoin='round';
-    ctx.beginPath();
-    for(var i=0;i<=w;i+=2){
-      var p=i/w*Math.PI*6 + t + phase;
-      var y=h/2 + Math.sin(p)*h*amp + Math.sin(p*2.7+1)*h*amp*0.4;
-      i?ctx.lineTo(i,y):ctx.moveTo(i,y);
-    }
-    ctx.stroke();
-  }
-  function draw(once){
-    var w=cv.clientWidth,h=cv.clientHeight;
-    ctx.clearRect(0,0,w,h);
-    ctx.strokeStyle=css('--grid','#1a2027'); ctx.lineWidth=1;
-    for(var x=0;x<w;x+=44){ctx.beginPath();ctx.moveTo(x+.5,0);ctx.lineTo(x+.5,h);ctx.stroke();}
-    ctx.beginPath();ctx.moveTo(0,h/2+.5);ctx.lineTo(w,h/2+.5);ctx.stroke();
-    trace(w,h,2.2,0.12,css('--line2','#3a4753'));
-    trace(w,h,0,0.2,css('--amber','#3ec1cf'));
-    if(once) return;
-    t+=0.02; raf=requestAnimationFrame(function(){draw(false);});
-  }
-  function start(){size(); if(reduce){draw(true);} else {if(raf)cancelAnimationFrame(raf); draw(false);}}
-  addEventListener('resize',start); start();
-
-  // ---- dynamic documentation ----
   var BASE='https://raw.githubusercontent.com/devfrp/RJ-45-SOUND-CARD/main';
   var DOCS_INDEX=[
     {cat:'Guides',items:[
@@ -590,6 +330,7 @@ rjsc gui</pre>
       side.appendChild(a);
     });
   });
+
 })();
 </script>
 </body>

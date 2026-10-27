@@ -1,0 +1,33 @@
+[
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "site",
+  "shape": "Index-First",
+  "theme": "blueprint",
+  "axes": "mid/geometric-sans/neutral",
+  "hero": "Banner",
+  "nav": "edge-aligned",
+  "footer": "statement",
+  "imagery": "none",
+  "photos": [],
+  "entry": "none",
+  "sections": [
+   "hero",
+   "split",
+   "diagram",
+   "grid",
+   "code",
+   "table",
+   "rows",
+   "faq",
+   "index"
+  ],
+  "signature": "the studio-to-laptop link drawn between two machines",
+  "waived": [
+   "59"
+  ],
+  "prompt": "RJ45 Sound Card docs",
+  "date": "2026-10-27"
+ }
+]
