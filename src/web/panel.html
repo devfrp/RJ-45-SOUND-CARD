@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RJ45 Sound Card</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="mark">RJ45</span><b>Sound Card</b><span class="host" id="host"></span></div>
+  <div class="pill" id="phase" data-phase="starting" role="status" aria-live="polite"><span class="dot"></span><span id="phase-text"></span></div>
+  <div class="lang" role="group" aria-label="Language">
+    <button type="button" data-lang="fr">FR</button>
+    <button type="button" data-lang="en">EN</button>
+  </div>
+</header>
+
+<main>
+  <section class="card wide" aria-labelledby="h-status">
+    <h2 id="h-status"><span data-i18n="status"></span>
+      <button type="button" class="btn small" id="restart" data-i18n="restart"></button>
+    </h2>
+    <dl class="stats">
+      <div><dt data-i18n="clients"></dt><dd id="s-clients">–</dd></div>
+      <div><dt data-i18n="uptime"></dt><dd id="s-uptime">–</dd></div>
+      <div><dt data-i18n="latency"></dt><dd id="s-latency">–</dd></div>
+      <div><dt data-i18n="bandwidth"></dt><dd id="s-bandwidth">–</dd></div>
+    </dl>
+    <p class="alert" id="s-error" role="alert" hidden></p>
+    <p class="hint"><span data-i18n="connect_hint"></span> <code id="connect-cmd">rjsc connect</code></p>
+  </section>
+
+  <form class="card" id="settings" aria-labelledby="h-audio" novalidate>
+    <h2 id="h-audio"><span data-i18n="audio"></span>
+      <button type="button" class="btn small" id="refresh-devices" data-i18n="refresh"></button>
+    </h2>
+    <div class="fields">
+      <div class="field full"><label for="input_device" data-i18n="input_device"></label><select id="input_device"></select></div>
+      <div class="field full"><label for="output_device" data-i18n="output_device"></label><select id="output_device"></select></div>
+      <div class="field"><label for="channels" data-i18n="channels"></label><input type="number" id="channels" min="1" max="64" step="1" required></div>
+      <div class="field"><label for="sample_rate" data-i18n="sample_rate"></label>
+        <select id="sample_rate">
+          <option value="44100">44.1 kHz</option><option value="48000">48 kHz</option>
+          <option value="88200">88.2 kHz</option><option value="96000">96 kHz</option>
+          <option value="176400">176.4 kHz</option><option value="192000">192 kHz</option>
+        </select></div>
+      <div class="field"><label for="buffer_frames" data-i18n="buffer"></label>
+        <select id="buffer_frames">
+          <option>64</option><option>128</option><option>256</option><option>512</option><option>1024</option>
+        </select><small id="buffer-ms"></small></div>
+      <div class="field"><label for="latency_ms" data-i18n="net_latency"></label><input type="number" id="latency_ms" min="1" max="500" step="1"><small data-i18n="net_latency_help"></small></div>
+      <div class="field"><label for="sample_format" data-i18n="sample_format"></label>
+        <select id="sample_format">
+          <option value="f32">32-bit float</option><option value="i32">32-bit int</option>
+          <option value="i24">24-bit int</option><option value="i16">16-bit int</option>
+        </select></div>
+    </div>
+
+    <h2 style="margin-top:24px" data-i18n="security"></h2>
+    <div class="fields">
+      <div class="field full check"><input type="checkbox" id="encryption_enabled"><label for="encryption_enabled" data-i18n="encryption"></label></div>
+      <div class="field"><label for="pre_shared_key" data-i18n="key"></label><input type="password" id="pre_shared_key" autocomplete="off" spellcheck="false"><small data-i18n="key_help"></small></div>
+      <div class="field"><label for="max_clients" data-i18n="max_clients"></label><input type="number" id="max_clients" min="1" max="64" step="1"></div>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn primary" id="apply" data-i18n="apply"></button>
+      <button type="button" class="btn" id="revert" data-i18n="revert"></button>
+      <span class="msg" id="apply-msg" aria-live="polite"></span>
+    </div>
+  </form>
+
+  <section class="card" aria-labelledby="h-volumes">
+    <h2 id="h-volumes"><span data-i18n="volumes"></span>
+      <button type="button" class="btn small" id="vol-reset">100 %</button>
+    </h2>
+    <div class="volumes" id="volumes"></div>
+  </section>
+
+  <section class="card wide" aria-labelledby="h-log">
+    <h2 id="h-log"><span data-i18n="log"></span>
+      <button type="button" class="btn small" id="log-clear" data-i18n="clear"></button>
+    </h2>
+    <div class="log" id="log" role="log" tabindex="0"></div>
+  </section>
+</main>
+<footer id="footer"></footer>
+
+<script>
+"use strict";
+const T = {
+  fr: {
+    status: "État", restart: "Redémarrer", clients: "Clients connectés", uptime: "En marche depuis",
+    latency: "Latence estimée (un sens)", bandwidth: "Débit par sens",
+    net_latency: "Marge réseau (ms)", net_latency_help: "Absorbe la gigue et la dérive d'horloge. Augmentez en cas de clics.",
+    connect_hint: "Sur le portable, lancez :",
+    audio: "Audio", refresh: "Actualiser", input_device: "Entrée (capture)", output_device: "Sortie (lecture)",
+    channels: "Canaux", sample_rate: "Fréquence", buffer: "Buffer (frames)", sample_format: "Format réseau",
+    security: "Sécurité", encryption: "Chiffrer l'audio et exiger la clé", key: "Clé partagée (hex)",
+    key_help: "Laisser vide pour garder la clé actuelle. Même clé sur le portable.",
+    key_set: "clé enregistrée — inchangée", max_clients: "Clients maximum",
+    apply: "Appliquer et redémarrer", revert: "Annuler", volumes: "Volume par canal", log: "Journal", clear: "Effacer",
+    default_device: "Par défaut (système)", missing: "introuvable", no_volumes: "Disponible quand le serveur tourne.",
+    ch: "Canal",
+    phase_running: "En marche", phase_starting: "Démarrage…", phase_error: "Erreur", phase_offline: "Serveur injoignable",
+    unsaved: "Modifications non appliquées", applying: "Application…", applied: "Appliqué. Redémarrage du serveur…",
+    config: "Configuration", version: "Version",
+    err_channels: "Le nombre de canaux doit être entre 1 et 64.",
+    err_sample_rate: "Fréquence d'échantillonnage invalide.",
+    err_buffer_frames: "Taille de buffer invalide.",
+    err_latency_ms: "La marge réseau doit être entre 1 et 500 ms.",
+    err_max_clients: "Il faut au moins 1 client.",
+    err_key_invalid: "La clé doit être en hexadécimal (0-9, a-f).",
+    err_key_missing: "Le chiffrement nécessite une clé.",
+    err_save_failed: "Appliqué, mais impossible d'enregistrer le fichier de configuration :",
+    err_network: "Le serveur ne répond pas.",
+  },
+  en: {
+    status: "Status", restart: "Restart", clients: "Connected clients", uptime: "Running for",
+    latency: "Estimated latency (one way)", bandwidth: "Bandwidth per direction",
+    net_latency: "Network margin (ms)", net_latency_help: "Absorbs jitter and clock drift. Raise it if you hear clicks.",
+    connect_hint: "On the laptop, run:",
+    audio: "Audio", refresh: "Refresh", input_device: "Input (capture)", output_device: "Output (playback)",
+    channels: "Channels", sample_rate: "Sample rate", buffer: "Buffer (frames)", sample_format: "Network format",
+    security: "Security", encryption: "Encrypt audio and require the key", key: "Pre-shared key (hex)",
+    key_help: "Leave empty to keep the current key. Use the same key on the laptop.",
+    key_set: "key saved — unchanged", max_clients: "Maximum clients",
+    apply: "Apply and restart", revert: "Revert", volumes: "Channel volume", log: "Log", clear: "Clear",
+    default_device: "System default", missing: "not found", no_volumes: "Available while the server is running.",
+    ch: "Channel",
+    phase_running: "Running", phase_starting: "Starting…", phase_error: "Error", phase_offline: "Server unreachable",
+    unsaved: "Unapplied changes", applying: "Applying…", applied: "Applied. Restarting the server…",
+    config: "Configuration", version: "Version",
+    err_channels: "Channels must be between 1 and 64.",
+    err_sample_rate: "Invalid sample rate.",
+    err_buffer_frames: "Invalid buffer size.",
+    err_latency_ms: "The network margin must be between 1 and 500 ms.",
+    err_max_clients: "At least 1 client is required.",
+    err_key_invalid: "The key must be hexadecimal (0-9, a-f).",
+    err_key_missing: "Encryption needs a key.",
+    err_save_failed: "Applied, but the configuration file could not be saved:",
+    err_network: "The server is not responding.",
+  },
+};
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+};
+
+let lang = store.get("rjsc-lang") || ((navigator.language || "").toLowerCase().startsWith("fr") ? "fr" : "en");
+const t = (key) => T[lang][key] ?? T.en[key] ?? key;
+
+let state = null;          // last /api/state response
+let devices = [];          // last /api/devices response
+let lastLogSeq = 0;
+let dirty = false;         // the form has unapplied edits
+let shownSettings = "";    // JSON of the settings currently shown in the form
+let phaseOverride = null;  // "offline" when polling fails
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll(".lang button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  if (state) { render(); fillDeviceSelects(); renderVolumes(true); }
+}
+
+document.querySelectorAll(".lang button").forEach((b) => b.addEventListener("click", () => {
+  lang = b.dataset.lang; store.set("rjsc-lang", lang); applyLang();
+}));
+
+// ─── Status ───────────────────────────────────────────────
+
+function formatDuration(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  if (d) return `${d} ${lang === "fr" ? "j" : "d"} ${h} h`;
+  if (h) return `${h} h ${String(m).padStart(2, "0")}`;
+  return `${m} min ${String(s % 60).padStart(2, "0")} s`;
+}
+
+function audioFromForm() {
+  return {
+    input_device: $("input_device").value,
+    output_device: $("output_device").value,
+    channels: Number($("channels").value),
+    sample_rate: Number($("sample_rate").value),
+    buffer_frames: Number($("buffer_frames").value),
+    sample_format: $("sample_format").value,
+    latency_ms: Number($("latency_ms").value),
+  };
+}
+
+function render() {
+  const st = state.status;
+  const phase = phaseOverride || st.phase;
+  $("phase").dataset.phase = phase;
+  $("phase-text").textContent = t("phase_" + phase);
+  $("host").textContent = state.hostname;
+  document.title = `${t("phase_" + phase)} · RJ45 Sound Card · ${state.hostname}`;
+
+  const running = phase === "running";
+  $("s-clients").textContent = running ? `${st.clients} / ${state.settings.max_clients}` : "–";
+  $("s-uptime").textContent = running && st.running_since_ms ? formatDuration(Date.now() - st.running_since_ms) : "–";
+
+  const a = state.settings.audio;
+  // Capture buffer + network margin + playback buffer.
+  $("s-latency").textContent = `≈ ${(2 * a.buffer_frames / a.sample_rate * 1000 + a.latency_ms).toFixed(1)} ms`;
+  const bytes = { f32: 4, i32: 4, i24: 3, i16: 2 }[a.sample_format] || 4;
+  $("s-bandwidth").textContent = `${(a.channels * a.sample_rate * bytes * 8 / 1e6).toFixed(1)} Mbit/s`;
+
+  const err = phaseOverride === "offline" ? t("err_network") : st.error;
+  $("s-error").hidden = !err;
+  $("s-error").textContent = err || "";
+
+  const port = st.control_port || 42002;
+  $("connect-cmd").textContent = `rjsc connect --server ${location.hostname}:${port}`;
+  $("footer").textContent = `${t("config")} : ${state.config_path} · ${t("version")} ${state.version}`;
+  $("pre_shared_key").placeholder = state.settings.has_key ? t("key_set") : "";
+}
+
+// ─── Settings form ────────────────────────────────────────
+
+function option(value, label) {
+  const o = document.createElement("option");
+  o.value = value; o.textContent = label;
+  return o;
+}
+
+function fillDeviceSelects() {
+  if (!state) return;
+  const fill = (id, current, hasChannels) => {
+    const sel = $(id);
+    const list = devices.filter(hasChannels);
+    sel.replaceChildren(option("@default", t("default_device")));
+    list.forEach((d) => sel.append(option(d.name, d.name)));
+    if (current !== "@default" && !list.some((d) => d.name === current)) {
+      sel.append(option(current, `${current} (${t("missing")})`));
+    }
+    sel.value = current;
+  };
+  const a = dirty ? audioFromForm() : state.settings.audio;
+  fill("input_device", a.input_device, (d) => d.input_channels > 0);
+  fill("output_device", a.output_device, (d) => d.output_channels > 0);
+}
+
+function fillForm() {
+  const s = state.settings;
+  fillDeviceSelects();
+  $("channels").value = s.audio.channels;
+  const rate = $("sample_rate");
+  if (![...rate.options].some((o) => Number(o.value) === s.audio.sample_rate)) {
+    rate.append(option(s.audio.sample_rate, `${s.audio.sample_rate / 1000} kHz`));
+  }
+  rate.value = String(s.audio.sample_rate);
+  const buf = $("buffer_frames");
+  if (![...buf.options].some((o) => Number(o.value) === s.audio.buffer_frames)) {
+    buf.append(option(s.audio.buffer_frames, String(s.audio.buffer_frames)));
+  }
+  buf.value = String(s.audio.buffer_frames);
+  $("sample_format").value = s.audio.sample_format;
+  $("latency_ms").value = s.audio.latency_ms;
+  $("encryption_enabled").checked = s.encryption_enabled;
+  $("pre_shared_key").value = "";
+  $("max_clients").value = s.max_clients;
+  shownSettings = JSON.stringify(s);
+  setDirty(false);
+  updateBufferHint();
+}
+
+function updateBufferHint() {
+  const ms = Number($("buffer_frames").value) / Number($("sample_rate").value) * 1000;
+  $("buffer-ms").textContent = `≈ ${ms.toFixed(1)} ms`;
+}
+
+function setDirty(value, message) {
+  dirty = value;
+  $("apply").disabled = !value;
+  $("revert").disabled = !value;
+  const msg = $("apply-msg");
+  msg.className = "msg";
+  msg.textContent = message ?? (value ? t("unsaved") : "");
+}
+
+function showMessage(text, kind) {
+  const msg = $("apply-msg");
+  msg.className = "msg " + kind;
+  msg.textContent = text;
+}
+
+$("settings").addEventListener("input", () => { setDirty(true); updateBufferHint(); });
+$("revert").addEventListener("click", () => { if (state) fillForm(); });
+
+$("settings").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const body = {
+    audio: audioFromForm(),
+    max_clients: Number($("max_clients").value),
+    encryption_enabled: $("encryption_enabled").checked,
+    pre_shared_key: $("pre_shared_key").value.trim(),
+  };
+  $("apply").disabled = true;
+  showMessage(t("applying"), "");
+  try {
+    const res = await fetch("/api/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const out = await res.json().catch(() => ({ ok: false, error: "network" }));
+    if (out.ok || out.error === "save_failed") {
+      dirty = false;
+      shownSettings = "";   // refill the form from the next poll
+      await poll();
+      if (out.ok) showMessage(t("applied"), "ok");
+      else showMessage(`${t("err_save_failed")} ${out.detail || ""}`, "err");
+    } else {
+      $("apply").disabled = false;
+      showMessage(t("err_" + out.error) || out.error, "err");
+    }
+  } catch {
+    $("apply").disabled = false;
+    showMessage(t("err_network"), "err");
+  }
+});
+
+async function loadDevices() {
+  const btn = $("refresh-devices");
+  btn.disabled = true;
+  try {
+    devices = await (await fetch("/api/devices")).json();
+    fillDeviceSelects();
+  } catch { /* keep the previous list */ }
+  btn.disabled = false;
+}
+$("refresh-devices").addEventListener("click", loadDevices);
+
+// ─── Volumes ──────────────────────────────────────────────
+
+let dragging = null;  // channel index being dragged, not overwritten by polling
+const pending = new Map();
+
+function sendVolume(channel, volume) {
+  clearTimeout(pending.get(channel));
+  pending.set(channel, setTimeout(() => {
+    fetch("/api/volume", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel, volume }),
+    }).catch(() => {});
+  }, 60));
+}
+
+function renderVolumes(force) {
+  const box = $("volumes");
+  const vols = state.volumes;
+  const running = (phaseOverride || state.status.phase) === "running";
+  if (!running || vols.length === 0) {
+    if (force || box.dataset.count !== "0") {
+      box.dataset.count = "0";
+      box.replaceChildren(Object.assign(document.createElement("p"), { className: "empty", textContent: t("no_volumes") }));
+    }
+    return;
+  }
+  if (force || box.dataset.count !== String(vols.length)) {
+    box.dataset.count = String(vols.length);
+    box.replaceChildren(...vols.map((_, i) => {
+      const row = document.createElement("div");
+      row.className = "vol";
+      const id = `vol-${i}`;
+      row.innerHTML = `<span></span><input type="range" min="0" max="100" step="1" id="${id}"><output for="${id}"></output>`;
+      row.firstChild.textContent = `${lang === "fr" ? "Can." : "Ch"} ${i + 1}`;
+      const input = row.querySelector("input");
+      input.setAttribute("aria-label", `${t("ch")} ${i + 1}`);
+      input.addEventListener("pointerdown", () => { dragging = i; });
+      input.addEventListener("change", () => { dragging = null; });
+      input.addEventListener("input", () => {
+        row.querySelector("output").textContent = `${input.value} %`;
+        state.volumes[i] = input.value / 100;
+        sendVolume(i, input.value / 100);
+      });
+      return row;
+    }));
+  }
+  vols.forEach((v, i) => {
+    if (i === dragging) return;
+    const input = $(`vol-${i}`);
+    const pct = Math.round(v * 100);
+    if (Number(input.value) !== pct) input.value = pct;
+    input.nextElementSibling.textContent = `${pct} %`;
+  });
+}
+
+$("vol-reset").addEventListener("click", () => {
+  if (!state) return;
+  state.volumes.forEach((_, i) => { state.volumes[i] = 1; sendVolume(i, 1); });
+  renderVolumes(false);
+});
+
+// ─── Log ──────────────────────────────────────────────────
+
+function appendLogs(entries) {
+  if (!entries.length) return;
+  const box = $("log");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  for (const e of entries) {
+    const line = document.createElement("div");
+    line.className = e.level;
+    const time = new Date(e.time_ms).toLocaleTimeString(lang === "fr" ? "fr-FR" : "en-GB");
+    const ts = document.createElement("span");
+    ts.className = "t";
+    ts.textContent = time + "  ";
+    line.append(ts, (e.level === "INFO" ? "" : e.level + "  ") + e.message);
+    box.append(line);
+  }
+  while (box.childElementCount > 500) box.firstElementChild.remove();
+  if (atBottom) box.scrollTop = box.scrollHeight;
+  lastLogSeq = entries[entries.length - 1].seq;
+}
+$("log-clear").addEventListener("click", () => $("log").replaceChildren());
+
+// ─── Polling ──────────────────────────────────────────────
+
+$("restart").addEventListener("click", async () => {
+  try {
+    await fetch("/api/restart", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  } catch { /* shown by the next poll */ }
+  poll();
+});
+
+async function poll() {
+  try {
+    const res = await fetch(`/api/state?logs_after=${lastLogSeq}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(res.statusText);
+    const next = await res.json();
+    if (next.mode !== "server") { location.reload(); return; }
+    if (state && next.started_ms !== state.started_ms) {
+      // The server process restarted: its log numbering starts over.
+      state = null; lastLogSeq = 0; $("log").replaceChildren();
+      return poll();
+    }
+    state = next;
+    phaseOverride = null;
+    if (!dirty && JSON.stringify(state.settings) !== shownSettings) fillForm();
+    render();
+    renderVolumes(false);
+    appendLogs(state.logs);
+  } catch {
+    phaseOverride = "offline";
+    if (state) { render(); renderVolumes(false); }
+    else { $("phase").dataset.phase = "offline"; $("phase-text").textContent = t("phase_offline"); }
+  }
+}
+
+applyLang();
+setDirty(false);
+poll().then(loadDevices);
+setInterval(poll, 1500);
+</script>
+</body>
+</html>

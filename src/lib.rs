@@ -1,7 +1,12 @@
+pub mod app;
 pub mod audio;
+pub mod autostart;
 pub mod client;
 pub mod config;
+pub mod driver;
 #[cfg(feature = "gui")]
 pub mod gui;
+pub mod logging;
 pub mod net;
 pub mod server;
+pub mod web;

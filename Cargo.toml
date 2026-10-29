@@ -31,3 +31,5 @@ hex = "0.4"
 crc32fast = "1"
 fastrand = "2"
 siphasher = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+if-addrs = "0.15"

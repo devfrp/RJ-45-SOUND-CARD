@@ -33,7 +33,7 @@ fn test_audio_format_bitrate() {
 
 #[test]
 fn test_jitter_buffer_basic() {
-    let mut jb = JitterBuffer::new(100, 48000);
+    let mut jb = JitterBuffer::new(100, 48000, 2);
     jb.push(0, vec![0.5; 512]);
     jb.push(1, vec![0.6; 512]);
     assert_eq!(jb.pop().unwrap()[0], 0.5);
@@ -43,7 +43,7 @@ fn test_jitter_buffer_basic() {
 
 #[test]
 fn test_jitter_buffer_reorder() {
-    let mut jb = JitterBuffer::new(100, 48000);
+    let mut jb = JitterBuffer::new(100, 48000, 2);
     jb.push(2, vec![2.0; 256]);
     jb.push(1, vec![1.0; 256]);
     jb.push(0, vec![0.0; 256]);

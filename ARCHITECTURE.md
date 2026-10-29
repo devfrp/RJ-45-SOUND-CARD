@@ -69,8 +69,24 @@ UdpSocket::send_to()  ─────  network  ─────►  UdpSocket::r
                                                    │  Vec<f32>
                                                    ▼
                                               Playback (cpal callback, real-time thread)
-                                                   │  Write to output buffer or fill silence
+                                                   │  Playout buffer (audio/playout.rs): FIFO read
+                                                   │  through an adaptive resampler, silence while
+                                                   │  (re)buffering
 ```
+
+The client puts packets through the jitter buffer (reordering) before the playback channel; the server feeds them directly. Both sides' `AudioPlayback` own a playout buffer.
+
+### Playout buffer and clock drift
+
+Sender and receiver sound cards run on different crystals (tens of ppm apart), and packet sizes rarely match the playback callback size. `audio::playout::Playout`, owned by the playback callback:
+
+- keeps a FIFO of interleaved frames and reads it at a fractional position with Catmull-Rom (4-point cubic) interpolation, so packet boundaries don't matter;
+- regulates its fill level (smoothed over 0.5 s, measured before each callback) to a target with a PI controller on the read speed: `ratio = 1 + Kp·e + ∫Ki·e`, `e` = fill error in seconds, `Kp = 0.1`, `Ki = 0.004` (≈10 s time constant, ζ ≈ 0.8), clamped to ±0.5 %;
+- targets `max(audio.latency_ms, callback + 1.5 × largest packet)`: packets arrive whole, so drift shows up as the level stepping down a full packet at once, which the extra half packet absorbs;
+- starts playing once the target is buffered, outputs silence and rebuffers on underrun, and drops the excess at once beyond 4× the target;
+- publishes buffer level, drift (ppm) and underruns through `PlayoutStats`, logged every 30 s by client and server.
+
+Device buffers use `audio.buffer_frames` (`BufferSize::Fixed`). Some backends accept a fixed size and then fail while running (ALSA through PipeWire), so `build_with_buffer_size` plays each new stream for 200 ms and rebuilds it with the default size if it reported an error. Stream errors are logged once per stream.
 
 ### AudioPacketHeader (40 bytes, little-endian)
 
@@ -153,9 +169,44 @@ Client                              Server
   │──── TCP close ────────────────────►│
 ```
 
+The client sends `list_devices` first. Only when encryption is enabled (with a key) on both sides does the server speak first, with its `auth` challenge; a client without a key that receives `auth` reports that the server requires authentication.
+
+## Web Control Panel (TCP 42080)
+
+`rjsc serve` runs `web::serve` (unless `[web] enabled = false`), which supervises the audio server and serves an HTTP panel with `axum`:
+
+```
+web::serve
+├── axum HTTP server (tokio::spawn)        GET  /             embedded src/web/panel.html
+│                                          GET  /api/state    status, settings, volumes, new log lines
+│                                          GET  /api/devices  local audio devices
+│                                          POST /api/settings save to rjsc.toml + restart
+│                                          POST /api/volume   per-channel volume
+│                                          POST /api/restart
+└── supervisor loop
+    └── server::run_with_hooks (inline: its future holds cpal streams, which are not Send)
+```
+
+- Applying settings or a restart sets the running server's stop flag; the server drops its audio streams, waits for its tasks (`JoinSet`) so every socket is released, and the supervisor starts it again with the new settings.
+- If the server fails (device missing, port busy), the error is shown in the panel and the server is retried every 10 s, or immediately when settings change.
+- Server state reaches the panel through `ServerHooks` (an event callback and the shared per-channel volume vector, which `set_volume` from clients also updates).
+- Logs from this crate are mirrored into a ring buffer (`logging::LogBuffer`) the page polls.
+- The pre-shared key is never sent to the page. POST endpoints require a JSON body, so browsers preflight cross-site requests.
+
+## Start and Setup (`rjsc start`, double-click)
+
+`app::run` loads the per-user config and dispatches on its `role`:
+
+- If the page port already answers, another instance runs (autostart): open the browser and exit.
+- No role: `web::home::setup` serves a local page (127.0.0.1) to choose server or client. The choice is saved, the page server shuts down (releasing the port), and `autostart::install_for` registers and starts `rjsc start` in the background, which then serves the page for the chosen role. If autostart can't be installed, the role runs in the current process.
+- Server: `web::serve` (panel + supervisor, below).
+- Client: `web::home::client` serves the laptop page on 127.0.0.1 and loops: discovery, session (`client::run_with_hooks` with `auto_reconnect` off, so each pass rediscovers), pause. A driver install (`driver.rs`, the setup scripts embedded and run through UAC / macOS admin dialog / pkexec) restarts the session to reopen the devices.
+
+Pages detect a mode change (`mode` and `started_ms` in `/api/state`) and reload.
+
 ## Discovery (UDP 42000)
 
-The server broadcasts a JSON payload to `255.255.255.255:42000` every 3 seconds:
+Every 3 seconds the server sends a JSON payload to `255.255.255.255:42000` and to each IPv4 interface's broadcast address (plus loopback), listed again at each send. The limited broadcast alone only leaves through the default route, which misses a direct cable next to Wi-Fi, and fails on a PC with no default route. Send errors are ignored so a later cable still gets announcements:
 
 ```json
 {
@@ -164,9 +215,12 @@ The server broadcasts a JSON payload to `255.255.255.255:42000` every 3 seconds:
   "device_channels": 24,
   "audio_port": 42001,
   "control_port": 42002,
-  "protocol_version": "1.0.0"
+  "protocol_version": "1.0.0",
+  "web_port": 42080
 }
 ```
+
+`web_port` is 0 when the panel is disabled, and absent from servers older than this field (read as 0).
 
 The client listens on `0.0.0.0:42000` for the configured timeout (default 5s) and collects all unique servers (deduplicated by socket address).
 
@@ -175,9 +229,9 @@ The client listens on `0.0.0.0:42000` for the configured timeout (default 5s) an
 The client maintains a jitter buffer for incoming UDP audio packets to handle network jitter, packet reordering, and packet loss:
 
 - Implemented as a `BTreeMap` keyed by sequence number, ensuring packets are played in order regardless of arrival order.
-- **Configurable max latency** — defaults to 50 ms (`jitter_buffer_latency_ms` in config). Packets older than this threshold are dropped.
+- **Configurable wait** — `client.jitter_buffer_ms` (default 10 ms): a missing packet is waited for until that much audio is queued behind it, then skipped. Smoothing and drift are handled by the playout buffer, not here.
 - **Duplicate removal** — if a packet with a sequence number already buffered arrives, it is silently discarded.
-- **Gap skipping** — when a sequence gap is detected and the next expected packet hasn't arrived within the latency window, playback advances past the gap (silence is inserted).
+- **Gap skipping** — after the wait, playback advances past the gap; the playout buffer covers the hole (it rebuffers if it runs dry).
 
 ## Encryption
 

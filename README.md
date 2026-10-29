@@ -81,6 +81,22 @@ sudo ./scripts/mac_setup.sh install
 powershell -ExecutionPolicy Bypass -File scripts\windows_setup.ps1 install
 ```
 
+## Quick start (no commands)
+
+1. Copy `rjsc` (`rjsc.exe` on Windows) to both PCs, somewhere it will stay.
+2. Double-click it. A page opens in the browser and asks what this PC is:
+   - **The PC with the sound cards** (server): it starts with the computer from now on and relays
+     its sound cards. Adjust it from any browser at `http://<server-ip>:42080`.
+   - **The PC with the DAW** (client): it starts with the computer, looks for the server and
+     connects as soon as the RJ45 cable is plugged in. Its page (`http://localhost:42080`) shows
+     the connection and installs the virtual sound card once (the computer asks for administrator
+     permission; this needs internet).
+3. Double-clicking `rjsc` again later just opens the page.
+
+Both PCs need an IPv4 address on the cable. Windows and macOS assign one by themselves
+(169.254.x.x) after about a minute; on Linux, set the wired connection to "Link-Local Only" (or
+"Shared to other computers") in the network settings.
+
 ## Usage
 
 ### 1. List available audio devices
@@ -131,6 +147,37 @@ auto_reconnect = true
 rjsc serve
 ```
 
+The server also serves a **web control panel**: open `http://<server-ip>:42080` in any browser
+(on the laptop, for example). It shows the status and connected clients, lets you pick the audio
+devices, channels, sample rate and buffer size, set per-channel volumes, and read the logs.
+Changes are saved to `rjsc.toml` and applied by restarting the audio server. If the sound card is
+missing at startup, the panel stays reachable and the server retries every 10 seconds.
+
+The panel has no password: anyone who can reach the server on the network can change its settings.
+Use it on a direct cable or a trusted network, or disable it with `[web] enabled = false`.
+
+#### Start the server automatically
+
+Choosing a role on the double-click page does this for you. From a terminal:
+
+```bash
+rjsc autostart enable     # start now and at every startup (as a server unless a role is set)
+rjsc autostart status
+rjsc autostart disable
+```
+
+| OS | Mechanism | Starts |
+|----|-----------|--------|
+| Linux | systemd user service | at boot (or at login if lingering can't be enabled) |
+| macOS | launchd agent | at login |
+| Windows | scheduled task "RJ45 Sound Card" | at login |
+
+The server runs in the user session because that is where audio devices are available. On macOS
+and Windows, enable automatic login so it starts without anyone logging in. The configuration file
+is `~/.config/rjsc/rjsc.toml` (Linux), `~/Library/Application Support/rjsc/rjsc.toml` (macOS) or
+`%APPDATA%\rjsc\rjsc.toml` (Windows), created if missing; use `-c` to choose another one. The `rjsc`
+binary must stay where it was when you ran the command.
+
 ### 4. Client (laptop)
 
 ```bash
@@ -143,19 +190,25 @@ rjsc connect --server 192.168.1.100:42002
 
 ## Latency
 
-Latency depends on:
+One-way latency ≈ capture buffer + network margin + playback buffer:
 
-- **Buffer size**: 64 frames → ~1.3ms, 256 → ~5.3ms, 1024 → ~21ms (at 48kHz)
-- **Network**: Ethernet switch/router latency
-- **Audio drivers**: ASIO (Windows) / JACK (Linux) offer the lowest latency
+- **Buffer size** (`audio.buffer_frames`): 64 frames → ~1.3ms, 256 → ~5.3ms, 1024 → ~21ms (at 48kHz).
+  It is applied to the sound card; if the card or driver refuses it (or fails with it), its default size is used and the log says so.
+- **Network margin** (`audio.latency_ms`, default 10 ms): absorbs network jitter and the drift between
+  the two sound cards' clocks. It is raised automatically when the packet sizes need more. Raise it if you hear clicks.
+- **Audio drivers**: ASIO (Windows) / JACK (Linux) offer the lowest latency.
 
-For real-time monitoring, use 64 or 128 frames with a Gigabit network.
+Two sound cards never run at exactly the same speed. Each side measures how fast its buffer fills and
+resamples the incoming audio by a few ppm to compensate, so there are no periodic clicks or slowly growing
+latency. Every 30 s the log shows the buffer level, the measured clock drift and any underruns.
+
+For real-time monitoring, use 64 or 128 frames on a direct cable or Gigabit network.
 
 ## Troubleshooting
 
 **Client can't find the server:**
 - Make sure both PCs are on the same network
-- Check firewall (open UDP ports 42000-42001, TCP port 42002)
+- Check firewall (open UDP ports 42000-42001, TCP ports 42002 and 42080)
 - Use `--server` to specify the address manually
 
 **No sound on the client:**

@@ -10,6 +10,10 @@ rjsc init
 
 ## Sections
 
+### `role` — What this PC is (top-level key)
+
+`"server"` or `"client"`. Set by the setup page the first time `rjsc` is double-clicked, and read by `rjsc start` (double-click and autostart): a server runs `serve` with its web panel, a client keeps looking for the server and connects whenever it is reachable. Absent until chosen.
+
 ### `[audio]` — Audio device and format
 
 | Key | Type | Default | Description |
@@ -18,8 +22,9 @@ rjsc init
 | `output_device` | string | `"@default"` | Output/playback device name. Use `@default` for system default, or a device name from `rjsc list`. |
 | `channels` | u16 | `2` | Number of audio channels. Range: 1–64. |
 | `sample_rate` | u32 | `48000` | Sample rate in Hz. Recommended: `44100`, `48000`, `96000`, `192000`. |
-| `buffer_frames` | usize | `256` | Buffer size in frames. Must be a power of 2: `64`, `128`, `256`, `512`, `1024`. |
+| `buffer_frames` | usize | `256` | Sound card buffer size in frames: `64`, `128`, `256`, `512`, `1024`. If the device refuses it or fails with it, its default size is used (logged). |
 | `sample_format` | string | `"f32"` | Audio sample format. Options: `"f32"`, `"i16"`, `"i24"`, `"i32"`. Use integer formats to reduce bandwidth or match hardware. |
+| `latency_ms` | u32 | `10` | Network margin: target of the buffer that absorbs jitter and clock drift for incoming audio, on both sides. Raised automatically to 1.5 packets + 1 sound card buffer when needed. Range 1–500. Raise it if you hear clicks. |
 
 **Latency per buffer size (at 48 kHz):**
 
@@ -57,7 +62,7 @@ Bandwidth formula: `channels × sample_rate × 4 bytes × 8 bits / 1,000,000 = M
 | `use_virtual_device` | bool | `true` | Whether to send audio to a virtual audio device. Set to `false` to use the system default output directly. |
 | `virtual_device_name` | string | `"RJ45 Virtual Audio"` | Name of the virtual audio device, as shown by `rjsc list`. Platform-specific examples below. |
 | `auto_reconnect` | bool | `true` | Automatically reconnect to the server if the connection drops. Retry delay: 5 seconds. |
-| `jitter_buffer_ms` | u64 | `50` | Jitter buffer size in milliseconds. Higher values tolerate more network jitter but add latency. Use 20-30ms for local networks, 50-100ms for WiFi. |
+| `jitter_buffer_ms` | u64 | `10` | How long to wait for a missing or late packet (measured as audio queued behind it) before skipping it. Only adds latency when a packet is missing. Use 10 ms on a direct cable, 30-50 ms on Wi-Fi. |
 
 **Virtual device names per platform:**
 
@@ -75,6 +80,15 @@ Bandwidth formula: `channels × sample_rate × 4 bytes × 8 bits / 1,000,000 = M
 | `pre_shared_key` | string | `""` | 64-character hex string (32 bytes) for symmetric encryption. Generate with: `openssl rand -hex 32` or `hexdump -n 32 -e '1/1 "%02x"' /dev/urandom`. |
 
 If enabled, the server will challenge the client on connect. Both sides must have the same `pre_shared_key`. Audio packets are XOR-encrypted with per-packet key derivation and include a CRC32 authentication tag.
+
+### `[web]` — Web control panel (server)
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Serve the control panel from `rjsc serve`. |
+| `port` | u16 | `42080` | TCP port of the panel, bound on `network.bind_address`. |
+
+Open `http://<server-ip>:<port>` in a browser. The panel edits `[audio]`, `server.max_clients` and `[encryption]`, writes them back to the configuration file and restarts the audio server. It never displays the pre-shared key. It has no password, so anyone who can reach the port can change the settings.
 
 ## Example: Dedicated Studio Server
 
@@ -167,7 +181,7 @@ pre_shared_key = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1
 | Variable | Purpose |
 |----------|---------|
 | `RUST_LOG` | Log level: `error`, `warn`, `info` (default), `debug`, `trace`. Example: `RUST_LOG=debug rjsc serve`. |
-| `HOSTNAME` or `COMPUTERNAME` | Used by the server for discovery announcements. Falls back to `"unknown"` if unset. |
+| `HOSTNAME` or `COMPUTERNAME` | Used by the server for discovery announcements. Falls back to the `hostname` command, then `"unknown"`. |
 
 ## Config File Location
 
@@ -179,3 +193,5 @@ rjsc connect -c ~/.config/rjsc/rjsc.toml
 ```
 
 If the file is not found, hardcoded defaults are used with a warning.
+
+`rjsc autostart enable` uses a per-user file instead, created if missing: `~/.config/rjsc/rjsc.toml` (Linux), `~/Library/Application Support/rjsc/rjsc.toml` (macOS) or `%APPDATA%\rjsc\rjsc.toml` (Windows).

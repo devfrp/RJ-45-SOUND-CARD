@@ -221,13 +221,17 @@ fn f32_slice_to_bytes(samples: &[f32], fmt: SampleFormat) -> Vec<u8> {
 fn bytes_to_f32_slice(bytes: &[u8], fmt: SampleFormat) -> Vec<f32> {
     match fmt {
         SampleFormat::F32 => bytes
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| f32::from_le_bytes(*c))
             .collect(),
         SampleFormat::I16 => bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| {
-                let v = i16::from_le_bytes([c[0], c[1]]) as f32;
+                let v = i16::from_le_bytes(*c) as f32;
                 (v / 32767.0).clamp(-1.0, 1.0)
             })
             .collect(),
@@ -248,9 +252,11 @@ fn bytes_to_f32_slice(bytes: &[u8], fmt: SampleFormat) -> Vec<f32> {
             samples
         }
         SampleFormat::I32 => bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|c| {
-                let v = i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f32;
+                let v = i32::from_le_bytes(*c) as f32;
                 (v / 2147483647.0).clamp(-1.0, 1.0)
             })
             .collect(),

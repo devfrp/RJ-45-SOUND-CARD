@@ -1,49 +1,50 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, StreamTrait};
 use crossbeam::channel::{self, Sender};
 
 use crate::audio::format::AudioFormat;
+use crate::audio::playout::{Playout, PlayoutStats};
 
 pub struct AudioPlayback {
     stream: cpal::Stream,
     tx: Sender<Vec<f32>>,
     format: AudioFormat,
+    stats: Arc<PlayoutStats>,
 }
 
 impl AudioPlayback {
-    pub fn new(device: &cpal::Device, fmt: &AudioFormat) -> Result<Self> {
-        let config = cpal::StreamConfig {
-            channels: fmt.channels.max(1),
-            sample_rate: cpal::SampleRate(fmt.sample_rate),
-            buffer_size: cpal::BufferSize::Default,
-        };
+    /// `latency_ms` is the playout buffer target (raised automatically when the
+    /// packet and callback sizes need more); see `audio::playout`.
+    pub fn new(device: &cpal::Device, fmt: &AudioFormat, latency_ms: u32) -> Result<Self> {
+        let channels = fmt.channels.max(1);
+        // Packets are only queued here; the callback moves them into the playout buffer.
+        let (tx, rx) = channel::bounded::<Vec<f32>>(256);
+        let stats = Arc::new(PlayoutStats::default());
 
-        let actual_channels = config.channels;
-        let (tx, rx) = channel::bounded::<Vec<f32>>(32);
-
-        let stream = device.build_output_stream::<f32, _, _>(
-            &config,
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                if let Ok(buf) = rx.try_recv() {
-                    let copy_len = data.len().min(buf.len());
-                    data[..copy_len].copy_from_slice(&buf[..copy_len]);
-                    if copy_len < data.len() {
-                        data[copy_len..].fill(0.0);
+        let stream = super::build_with_buffer_size(fmt, |config, health| {
+            let rx = rx.clone();
+            let mut playout =
+                Playout::with_stats(channels, fmt.sample_rate, latency_ms, stats.clone());
+            device.build_output_stream::<f32, _, _>(
+                config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    while let Ok(buf) = rx.try_recv() {
+                        playout.push(&buf);
                     }
-                } else {
-                    data.fill(0.0);
-                }
-            },
-            |err| {
-                log::error!("Audio playback stream error: {}", err);
-            },
-            None,
-        )?;
+                    playout.fill(data);
+                },
+                super::stream_error_logger("playback", health),
+                None,
+            )
+        })?;
 
         Ok(Self {
             stream,
             tx,
-            format: AudioFormat::new(actual_channels, config.sample_rate.0, fmt.buffer_frames),
+            format: AudioFormat::new(channels, fmt.sample_rate, fmt.buffer_frames),
+            stats,
         })
     }
 
@@ -69,5 +70,10 @@ impl AudioPlayback {
 
     pub fn format(&self) -> &AudioFormat {
         &self.format
+    }
+
+    /// Buffer level, clock drift and underruns of the incoming audio.
+    pub fn stats(&self) -> Arc<PlayoutStats> {
+        self.stats.clone()
     }
 }

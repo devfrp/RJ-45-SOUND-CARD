@@ -8,6 +8,8 @@ use cpal::traits::DeviceTrait;
 use crossbeam::channel;
 use tokio::io::BufReader;
 use tokio::sync::RwLock;
+use tokio::task::JoinSet;
+use tokio::time::Duration;
 
 use crate::audio::capture::AudioCapture;
 use crate::audio::playback::AudioPlayback;
@@ -16,15 +18,64 @@ use crate::net::audio_stream::{self, AudioPacketHeader};
 use crate::net::control::{self, ControlMessage, DeviceInfo};
 use crate::net::discovery;
 
+/// How often the accept loop checks `stop_flag`.
+const STOP_POLL: Duration = Duration::from_millis(250);
+/// How often to log the incoming audio buffer and clock drift.
+const STATS_INTERVAL: Duration = Duration::from_secs(30);
+
 struct ClientStream {
     stream_id: u32,
     sequence: u64,
 }
 
-pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
-    let hostname = std::env::var("HOSTNAME")
+/// Notifications for front-ends (the web panel) that embed the server.
+#[derive(Debug, Clone)]
+pub enum ServerEvent {
+    /// Sockets are bound and clients can connect.
+    Listening { control_port: u16 },
+    /// The number of connected clients changed.
+    Clients(u32),
+}
+
+pub type EventCallback = Arc<dyn Fn(ServerEvent) + Send + Sync>;
+
+/// Lets a front-end observe and drive a running server.
+pub struct ServerHooks {
+    pub on_event: EventCallback,
+    /// Per-channel volumes, resized to the channel count on start.
+    pub volumes: Arc<RwLock<Vec<f32>>>,
+}
+
+fn notify(on_event: &Option<EventCallback>, event: ServerEvent) {
+    if let Some(callback) = on_event {
+        callback(event);
+    }
+}
+
+pub fn hostname() -> String {
+    std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("COMPUTERNAME"))
-        .unwrap_or_else(|_| "unknown".to_string());
+        .ok()
+        .or_else(|| {
+            let out = std::process::Command::new("hostname").output().ok()?;
+            let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            (!name.is_empty()).then_some(name)
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
+    run_with_hooks(settings, stop_flag, None).await
+}
+
+/// Runs the server until `stop_flag` is set. All background tasks are
+/// aborted on return, so the server can be restarted in the same process.
+pub async fn run_with_hooks(
+    settings: Settings,
+    stop_flag: Arc<AtomicBool>,
+    hooks: Option<ServerHooks>,
+) -> Result<()> {
+    let hostname = hostname();
 
     log::info!("RJ45 Sound Card - Server Mode");
     log::info!("Hostname: {}", hostname);
@@ -62,13 +113,16 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
     }
 
     let capture = AudioCapture::new(&input_device, &audio_format)?;
-    capture.start()?;
     let capture_rx = capture.receiver();
     let actual_format = *capture.format();
 
-    let playback = AudioPlayback::new(&output_device, &actual_format)?;
+    let playback = AudioPlayback::new(&output_device, &actual_format, settings.audio.latency_ms)?;
+    // Started only now: opening the playback can take a moment, and captured
+    // audio would pile up in the meantime.
+    capture.start()?;
     playback.start()?;
     let playback_tx = playback.sender();
+    let playout_stats = playback.stats();
 
     let audio_socket = Arc::new(
         tokio::net::UdpSocket::bind(format!(
@@ -91,8 +145,28 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
     let dn = device_name.clone();
     let hn = hostname.clone();
     let ch = audio_format.channels;
-    tokio::spawn(async move {
-        if let Err(e) = discovery::announce_server(&hn, &dn, ch, audio_port, control_port).await {
+    let web_port = if settings.web.enabled {
+        settings.web.port
+    } else {
+        0
+    };
+    // Dropped (aborting every task) when this function returns.
+    let mut tasks = JoinSet::new();
+    let sample_rate = actual_format.sample_rate;
+    tasks.spawn(async move {
+        let mut ticker = tokio::time::interval(STATS_INTERVAL);
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            if playout_stats.is_playing() {
+                log::info!("Incoming audio: {}", playout_stats.summary(sample_rate));
+            }
+        }
+    });
+    tasks.spawn(async move {
+        if let Err(e) =
+            discovery::announce_server(&hn, &dn, ch, audio_port, control_port, web_port).await
+        {
             log::error!("Discovery broadcast failed: {}", e);
         }
     });
@@ -102,8 +176,14 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
     let current_client_addrs: Arc<RwLock<Vec<SocketAddr>>> = Arc::new(RwLock::new(Vec::new()));
     let client_streams: Arc<RwLock<HashMap<SocketAddr, ClientStream>>> =
         Arc::new(RwLock::new(HashMap::new()));
-    let volumes: Arc<RwLock<Vec<f32>>> =
-        Arc::new(RwLock::new(vec![1.0; audio_format.channels as usize]));
+    let (on_event, volumes) = match hooks {
+        Some(hooks) => (Some(hooks.on_event), hooks.volumes),
+        None => (None, Arc::new(RwLock::new(Vec::new()))),
+    };
+    volumes
+        .write()
+        .await
+        .resize(audio_format.channels as usize, 1.0);
 
     let audio_socket_clone = audio_socket.clone();
     let client_addrs = current_client_addrs.clone();
@@ -114,7 +194,7 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
     let fmt_sfmt = audio_format.sample_format;
     let vols = volumes.clone();
     let crypto_cap = crypto.clone();
-    tokio::spawn(async move {
+    tasks.spawn(async move {
         loop {
             match capture_rx.recv() {
                 Ok(mut samples) => {
@@ -165,7 +245,8 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
                     drop(stream_guard);
                 }
                 Err(channel::RecvError) => {
-                    log::error!("Capture channel closed");
+                    // Also the normal path on shutdown, when the capture stream is dropped.
+                    log::debug!("Capture channel closed");
                     break;
                 }
             }
@@ -175,7 +256,7 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
     let audio_socket_clone2 = audio_socket.clone();
     let client_addr_filter = current_client_addrs.clone();
     let crypto_playback = crypto.clone();
-    tokio::spawn(async move {
+    tasks.spawn(async move {
         let mut buf = vec![0u8; audio_stream::MAX_PACKET_SIZE];
         loop {
             match audio_socket_clone2.recv_from(&mut buf).await {
@@ -209,13 +290,24 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
     });
 
     log::info!("Waiting for client connections on port {}...", control_port);
+    notify(&on_event, ServerEvent::Listening { control_port });
 
-    loop {
-        if stop_flag.load(Ordering::SeqCst) {
-            log::info!("Server shutting down...");
-            break Ok(());
-        }
-        let (tcp_stream, client_addr) = control_listener.accept().await?;
+    let mut stop_check = tokio::time::interval(STOP_POLL);
+    let result = loop {
+        while tasks.try_join_next().is_some() {}
+        let (tcp_stream, client_addr) = tokio::select! {
+            accepted = control_listener.accept() => match accepted {
+                Ok(accepted) => accepted,
+                Err(e) => break Err(e.into()),
+            },
+            _ = stop_check.tick() => {
+                if stop_flag.load(Ordering::SeqCst) {
+                    log::info!("Server shutting down...");
+                    break Ok(());
+                }
+                continue;
+            }
+        };
         log::info!("Client connected from {}", client_addr);
 
         let connected = connected_clients.clone();
@@ -228,13 +320,19 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
         let vols = volumes.clone();
         let enc_enabled = settings.encryption.enabled;
         let psk = settings.encryption.pre_shared_key.clone();
+        let on_event = on_event.clone();
 
-        tokio::spawn(async move {
+        tasks.spawn(async move {
             if connected.load(Ordering::SeqCst) >= max_clients {
                 log::warn!("Rejected client {} (max clients reached)", client_addr);
                 return;
             }
-            connected.fetch_add(1, Ordering::SeqCst);
+            let count = connected.fetch_add(1, Ordering::SeqCst) + 1;
+            notify(&on_event, ServerEvent::Clients(count));
+            let leave = || {
+                let count = connected.fetch_sub(1, Ordering::SeqCst) - 1;
+                notify(&on_event, ServerEvent::Clients(count));
+            };
 
             let (mut read_half, mut write_half) = tokio::io::split(tcp_stream);
             let mut reader = BufReader::new(&mut read_half);
@@ -250,7 +348,7 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
                 .await
                 {
                     log::error!("Failed to send auth challenge: {}", e);
-                    connected.fetch_sub(1, Ordering::SeqCst);
+                    leave();
                     return;
                 }
 
@@ -266,7 +364,7 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
                                 },
                             )
                             .await;
-                            connected.fetch_sub(1, Ordering::SeqCst);
+                            leave();
                             return;
                         }
                         let _ =
@@ -275,7 +373,7 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
                     }
                     Ok(_) | Err(_) => {
                         log::warn!("Auth failed for {} (invalid response)", client_addr);
-                        connected.fetch_sub(1, Ordering::SeqCst);
+                        leave();
                         return;
                     }
                 }
@@ -404,7 +502,7 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
                 }
             }
 
-            connected.fetch_sub(1, Ordering::SeqCst);
+            leave();
             current_addr
                 .write()
                 .await
@@ -413,5 +511,13 @@ pub async fn run(settings: Settings, stop_flag: Arc<AtomicBool>) -> Result<()> {
             streams.write().await.remove(&cleanup_addr);
             log::info!("Client {} removed", client_addr);
         });
-    }
+    };
+
+    // Stopping the audio streams closes the channels the capture task blocks on,
+    // so every task can finish and release its socket before we return.
+    drop(capture);
+    drop(playback);
+    drop(control_listener);
+    tasks.shutdown().await;
+    result
 }

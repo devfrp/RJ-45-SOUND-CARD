@@ -1,3 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, StreamTrait};
 use crossbeam::channel::{self, Receiver, TrySendError};
@@ -12,36 +15,36 @@ pub struct AudioCapture {
 
 impl AudioCapture {
     pub fn new(device: &cpal::Device, fmt: &AudioFormat) -> Result<Self> {
-        let config = cpal::StreamConfig {
-            channels: fmt.channels.max(1),
-            sample_rate: cpal::SampleRate(fmt.sample_rate),
-            buffer_size: cpal::BufferSize::Default,
-        };
-
-        let actual_channels = config.channels;
+        let actual_channels = fmt.channels.max(1);
         let (tx, rx) = channel::bounded::<Vec<f32>>(32);
+        let warned = Arc::new(AtomicBool::new(false));
 
-        let stream = device.build_input_stream::<f32, _, _>(
-            &config,
-            move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                if data.len() < actual_channels as usize {
-                    return;
-                }
-                let buf = data.to_vec();
-                if let Err(TrySendError::Full(_)) = tx.try_send(buf) {
-                    log::warn!("Capture buffer full, dropping frame");
-                }
-            },
-            |err| {
-                log::error!("Audio capture stream error: {}", err);
-            },
-            None,
-        )?;
+        let stream = super::build_with_buffer_size(fmt, |config, health| {
+            let tx = tx.clone();
+            let warned = warned.clone();
+            device.build_input_stream::<f32, _, _>(
+                config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    if data.len() < actual_channels as usize {
+                        return;
+                    }
+                    let buf = data.to_vec();
+                    if let Err(TrySendError::Full(_)) = tx.try_send(buf) {
+                        // Once: this runs in the real-time audio thread.
+                        if !warned.swap(true, Ordering::Relaxed) {
+                            log::warn!("Capture buffer full, dropping audio (network too slow?)");
+                        }
+                    }
+                },
+                super::stream_error_logger("capture", health),
+                None,
+            )
+        })?;
 
         Ok(Self {
             stream,
             rx,
-            format: AudioFormat::new(actual_channels, config.sample_rate.0, fmt.buffer_frames),
+            format: AudioFormat::new(actual_channels, fmt.sample_rate, fmt.buffer_frames),
         })
     }
 

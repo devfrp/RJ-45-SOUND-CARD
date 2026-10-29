@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RJ45 Sound Card</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+main.narrow { max-width: 960px; }
+.intro { grid-column: 1 / -1; margin: 8px 0 0; }
+.intro h1 { margin: 0 0 6px; font-size: clamp(24px, 3vw, 34px); font-weight: 600; letter-spacing: -0.01em; }
+.intro p { margin: 0; color: var(--ink-2); max-width: 60ch; }
+.roles { grid-column: 1 / -1; display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.role {
+  display: grid; gap: 10px; align-content: start; text-align: left; cursor: pointer;
+  padding: 24px; background: var(--paper-2); border: 1px solid var(--rule-2);
+  transition: border-color 120ms, background 120ms;
+}
+.role:hover { border-color: var(--ink); background: var(--paper-3); }
+.role:disabled { cursor: default; opacity: 0.55; }
+.role .tag { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.role strong { font-size: 22px; font-weight: 600; }
+.role span:last-child { color: var(--ink-2); }
+.big { font-size: clamp(20px, 2.4vw, 26px); margin: 0 0 8px; }
+.steps { margin: 12px 0 0; padding-left: 20px; color: var(--ink-2); }
+.steps li { margin: 4px 0; }
+.ok-text { color: var(--ok); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+a.btn { text-decoration: none; color: var(--ink); }
+a.btn.primary { color: var(--paper-3); }
+main.narrow + footer { max-width: 960px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="mark">RJ45</span><b>Sound Card</b><span class="host" id="host"></span></div>
+  <div class="pill" id="phase" data-phase="starting" role="status" aria-live="polite"><span class="dot"></span><span id="phase-text"></span></div>
+  <div class="lang" role="group" aria-label="Language">
+    <button type="button" data-lang="fr">FR</button>
+    <button type="button" data-lang="en">EN</button>
+  </div>
+</header>
+
+<!-- First run: choose what this PC is -->
+<main class="narrow" id="setup" hidden>
+  <div class="intro">
+    <h1 data-i18n="setup_title"></h1>
+    <p data-i18n="setup_lead"></p>
+  </div>
+  <div class="roles">
+    <button type="button" class="role" data-role="server">
+      <span class="tag" data-i18n="server_tag"></span>
+      <strong data-i18n="server_title"></strong>
+      <span data-i18n="server_text"></span>
+    </button>
+    <button type="button" class="role" data-role="client">
+      <span class="tag" data-i18n="client_tag"></span>
+      <strong data-i18n="client_title"></strong>
+      <span data-i18n="client_text"></span>
+    </button>
+  </div>
+  <p class="alert" id="setup-error" role="alert" hidden></p>
+  <p class="hint intro" id="setup-note"></p>
+</main>
+
+<!-- Laptop: connection and virtual sound card -->
+<main id="client" hidden>
+  <section class="card wide" aria-labelledby="h-conn">
+    <h2 id="h-conn" data-i18n="connection"></h2>
+    <p class="big" id="conn-title"></p>
+    <p class="hint" id="conn-text" style="margin-top:0"></p>
+    <p class="alert" id="conn-error" role="alert" hidden></p>
+    <div class="row">
+      <a class="btn primary" id="panel-link" target="_blank" rel="noopener" hidden data-i18n="open_panel"></a>
+    </div>
+  </section>
+
+  <section class="card wide" aria-labelledby="h-driver">
+    <h2 id="h-driver"><span data-i18n="driver"></span>
+      <button type="button" class="btn small" id="driver-check" data-i18n="check"></button>
+    </h2>
+    <p class="big" id="driver-title"></p>
+    <p class="hint" id="driver-text" style="margin-top:0"></p>
+    <p class="alert" id="driver-error" role="alert" hidden></p>
+    <div class="row">
+      <button type="button" class="btn primary" id="driver-install" hidden data-i18n="install"></button>
+      <a class="btn" id="driver-manual" target="_blank" rel="noopener" hidden data-i18n="manual"></a>
+    </div>
+  </section>
+
+  <section class="card wide" aria-labelledby="h-log">
+    <h2 id="h-log"><span data-i18n="log"></span>
+      <button type="button" class="btn small" id="log-clear" data-i18n="clear"></button>
+    </h2>
+    <div class="log" id="log" role="log" tabindex="0"></div>
+  </section>
+</main>
+<footer id="footer"></footer>
+
+<script>
+"use strict";
+const T = {
+  fr: {
+    setup_title: "Ce PC est…",
+    setup_lead: "À choisir une seule fois. Ensuite, RJ45 Sound Card démarre tout seul avec l'ordinateur.",
+    server_tag: "Serveur", server_title: "Le PC avec les cartes son",
+    server_text: "Il relaie ses cartes son vers l'autre PC. Vous le réglez ensuite depuis n'importe quel navigateur.",
+    client_tag: "Client", client_title: "Le PC avec le DAW",
+    client_text: "Il utilise les cartes son du serveur comme si elles étaient branchées dessus. Il se connecte dès que le câble RJ45 est branché.",
+    keep_here: "Laissez le programme à cet emplacement :",
+    setting_up: "Configuration…", setup_slow: "Ça prend du temps. Si rien ne change, relancez RJ45 Sound Card.",
+    phase_setup: "Première configuration", phase_searching: "Recherche du serveur", phase_connecting: "Connexion…",
+    phase_connected: "Connecté", phase_streaming: "Son actif", phase_offline: "Arrêté",
+    connection: "Connexion",
+    searching_title: "Branchez le câble RJ45 vers le serveur.",
+    searching_text: "La connexion se fait toute seule dès que le serveur est trouvé. Vérifiez que le serveur est allumé.",
+    connecting_title: "Serveur trouvé : {name}",
+    connecting_text: "Ouverture des cartes son…",
+    streaming_title: "Son actif avec {name}",
+    streaming_text: "Depuis {since}. Dans votre DAW, choisissez la carte son « {device} ».",
+    open_panel: "Ouvrir le panneau du serveur",
+    driver: "Carte son virtuelle", check: "Vérifier",
+    driver_checking: "Vérification…",
+    driver_ok: "Installée : {device}",
+    driver_ok_text: "C'est elle que votre DAW utilise pour parler au serveur.",
+    driver_missing: "Pas encore installée",
+    driver_missing_text: "Il faut l'installer une fois. Votre ordinateur va demander l'autorisation administrateur, et il faut internet pour la télécharger.",
+    driver_running: "Installation en cours… Acceptez la demande d'autorisation.",
+    driver_reboot: "Installation terminée. Redémarrez l'ordinateur si la carte n'apparaît pas.",
+    driver_failed: "L'installation a échoué :",
+    install: "Installer la carte son virtuelle", manual: "Installer à la main",
+    log: "Journal", clear: "Effacer", config: "Configuration", version: "Version",
+    stopped: "RJ45 Sound Card ne tourne plus sur ce PC. Relancez-le.",
+  },
+  en: {
+    setup_title: "This PC is…",
+    setup_lead: "You only choose once. After that, RJ45 Sound Card starts by itself with the computer.",
+    server_tag: "Server", server_title: "The PC with the sound cards",
+    server_text: "It relays its sound cards to the other PC. You then adjust it from any browser.",
+    client_tag: "Client", client_title: "The PC with the DAW",
+    client_text: "It uses the server's sound cards as if they were plugged into it. It connects as soon as the RJ45 cable is plugged in.",
+    keep_here: "Keep the program at this location:",
+    setting_up: "Setting up…", setup_slow: "This is taking a while. If nothing changes, start RJ45 Sound Card again.",
+    phase_setup: "First-time setup", phase_searching: "Looking for the server", phase_connecting: "Connecting…",
+    phase_connected: "Connected", phase_streaming: "Audio on", phase_offline: "Stopped",
+    connection: "Connection",
+    searching_title: "Plug the RJ45 cable into the server.",
+    searching_text: "It connects by itself as soon as the server is found. Make sure the server is on.",
+    connecting_title: "Server found: {name}",
+    connecting_text: "Opening the sound cards…",
+    streaming_title: "Audio on with {name}",
+    streaming_text: "For {since}. In your DAW, choose the “{device}” sound card.",
+    open_panel: "Open the server panel",
+    driver: "Virtual sound card", check: "Check",
+    driver_checking: "Checking…",
+    driver_ok: "Installed: {device}",
+    driver_ok_text: "Your DAW uses it to talk to the server.",
+    driver_missing: "Not installed yet",
+    driver_missing_text: "It has to be installed once. Your computer will ask for administrator permission, and it needs internet to download it.",
+    driver_running: "Installing… Accept the permission prompt.",
+    driver_reboot: "Installation finished. Restart the computer if the card doesn't show up.",
+    driver_failed: "Installation failed:",
+    install: "Install the virtual sound card", manual: "Install manually",
+    log: "Log", clear: "Clear", config: "Configuration", version: "Version",
+    stopped: "RJ45 Sound Card is no longer running on this PC. Start it again.",
+  },
+};
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+};
+let lang = store.get("rjsc-lang") || ((navigator.language || "").toLowerCase().startsWith("fr") ? "fr" : "en");
+const t = (key, vars = {}) => (T[lang][key] ?? T.en[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+
+let state = null;
+let offline = false;
+let lastLogSeq = 0;
+let settingUpSince = null;
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll(".lang button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  if (state) render();
+}
+document.querySelectorAll(".lang button").forEach((b) => b.addEventListener("click", () => {
+  lang = b.dataset.lang; store.set("rjsc-lang", lang); applyLang();
+}));
+
+function formatDuration(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? `${h} h ${String(m).padStart(2, "0")}` : `${m} min ${String(s % 60).padStart(2, "0")} s`;
+}
+
+function setPhase(phase, text) {
+  $("phase").dataset.phase = phase;
+  $("phase-text").textContent = text;
+}
+
+function showAlert(id, text) {
+  $(id).hidden = !text;
+  $(id).textContent = text || "";
+}
+
+function render() {
+  $("host").textContent = state.hostname;
+  $("footer").textContent = `${t("config")} : ${state.config_path} · ${t("version")} ${state.version}`;
+  $("setup").hidden = state.mode !== "setup";
+  $("client").hidden = state.mode !== "client";
+  if (state.mode === "setup") renderSetup(); else renderClient();
+}
+
+function renderSetup() {
+  setPhase("starting", settingUpSince ? t("setting_up") : t("phase_setup"));
+  document.title = "RJ45 Sound Card";
+  $("setup-note").textContent = `${t("keep_here")} ${state.exe_path}`;
+}
+
+function renderClient() {
+  const c = state.client, d = state.driver;
+  if (offline) {
+    setPhase("offline", t("phase_offline"));
+  } else {
+    const look = { searching: "starting", connecting: "starting", connected: "running", streaming: "running" }[c.phase];
+    setPhase(look, t("phase_" + c.phase));
+  }
+  document.title = `${t("phase_" + c.phase)} · RJ45 Sound Card`;
+
+  const name = c.server_name || c.server_address || "";
+  const device = d.device || "RJ45";
+  const key = c.phase === "searching" ? "searching" : c.phase === "streaming" ? "streaming" : "connecting";
+  $("conn-title").textContent = t(key + "_title", { name });
+  $("conn-text").textContent = t(key + "_text", {
+    since: c.streaming_since_ms ? formatDuration(Date.now() - c.streaming_since_ms) : "",
+    device,
+  });
+  showAlert("conn-error", offline ? t("stopped") : (c.phase === "searching" ? c.error : null));
+  const link = $("panel-link");
+  link.hidden = !c.panel_url || c.phase === "searching";
+  if (c.panel_url) link.href = c.panel_url;
+
+  const install = $("driver-install"), manual = $("driver-manual");
+  manual.href = d.manual_url;
+  install.disabled = d.install === "running";
+  if (!d.checked) {
+    $("driver-title").textContent = t("driver_checking");
+    $("driver-text").textContent = "";
+    install.hidden = true; manual.hidden = true;
+  } else if (d.install === "running") {
+    $("driver-title").textContent = t("driver_running");
+    $("driver-text").textContent = "";
+    install.hidden = false; manual.hidden = true;
+  } else if (d.device) {
+    $("driver-title").innerHTML = "";
+    $("driver-title").append(Object.assign(document.createElement("span"), { className: "ok-text", textContent: "✓ " }), t("driver_ok", { device: d.device }));
+    $("driver-text").textContent = t("driver_ok_text");
+    install.hidden = true; manual.hidden = true;
+  } else {
+    $("driver-title").textContent = d.install === "done" ? t("driver_reboot") : t("driver_missing");
+    $("driver-text").textContent = t("driver_missing_text");
+    install.hidden = false; manual.hidden = false;
+  }
+  showAlert("driver-error", d.install === "failed" ? `${t("driver_failed")} ${d.message || ""}` : null);
+}
+
+// ─── Actions ──────────────────────────────────────────────
+
+const postJson = (url, body) => fetch(url, {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}),
+});
+
+document.querySelectorAll(".role").forEach((b) => b.addEventListener("click", async () => {
+  document.querySelectorAll(".role").forEach((x) => { x.disabled = true; });
+  showAlert("setup-error", null);
+  try {
+    const res = await postJson("/api/setup", { role: b.dataset.role });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error);
+    settingUpSince = Date.now();
+    renderSetup();
+  } catch (e) {
+    document.querySelectorAll(".role").forEach((x) => { x.disabled = false; });
+    showAlert("setup-error", String(e.message || e));
+  }
+}));
+
+$("driver-install").addEventListener("click", async () => {
+  $("driver-install").disabled = true;
+  try { await postJson("/api/driver/install"); } catch { /* shown by the next poll */ }
+  poll();
+});
+$("driver-check").addEventListener("click", async () => {
+  try { await postJson("/api/driver/check"); } catch { /* shown by the next poll */ }
+  poll();
+});
+
+// ─── Log ──────────────────────────────────────────────────
+
+function appendLogs(entries) {
+  if (!entries.length) return;
+  const box = $("log");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  for (const e of entries) {
+    const line = document.createElement("div");
+    line.className = e.level;
+    const ts = Object.assign(document.createElement("span"), {
+      className: "t",
+      textContent: new Date(e.time_ms).toLocaleTimeString(lang === "fr" ? "fr-FR" : "en-GB") + "  ",
+    });
+    line.append(ts, (e.level === "INFO" ? "" : e.level + "  ") + e.message);
+    box.append(line);
+  }
+  while (box.childElementCount > 500) box.firstElementChild.remove();
+  if (atBottom) box.scrollTop = box.scrollHeight;
+  lastLogSeq = entries[entries.length - 1].seq;
+}
+$("log-clear").addEventListener("click", () => $("log").replaceChildren());
+
+// ─── Polling ──────────────────────────────────────────────
+
+async function poll() {
+  try {
+    const res = await fetch(`/api/state?logs_after=${lastLogSeq}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(res.statusText);
+    const next = await res.json();
+    // After setup, this address serves the chosen role's page.
+    if (next.mode === "server" || (state && next.started_ms !== state.started_ms)) {
+      location.reload();
+      return;
+    }
+    state = next;
+    offline = false;
+    render();
+    appendLogs(state.logs);
+  } catch {
+    offline = true;
+    if (!state) return;
+    if (state.mode === "setup") {
+      // Expected while handing over to the background instance.
+      if (settingUpSince && Date.now() - settingUpSince > 20000) showAlert("setup-error", t("setup_slow"));
+      renderSetup();
+    } else {
+      render();
+    }
+  }
+}
+
+applyLang();
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

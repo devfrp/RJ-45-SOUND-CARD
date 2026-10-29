@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use anyhow::Result;
-use cpal::traits::{DeviceTrait, HostTrait};
 use crossbeam::channel::{self, Receiver, Sender, TryRecvError};
 use eframe::egui::{self, ComboBox, Slider, Visuals};
 
@@ -543,7 +542,7 @@ async fn backend_loop(
 
         match cmd_rx.recv() {
             Ok(GuiCommand::ListDevices) => {
-                let devices = list_audio_devices().await;
+                let devices = crate::audio::device_infos();
                 send_evt(&evt_tx, BackendEvent::DeviceList { devices });
             }
             Ok(GuiCommand::StartServer {
@@ -694,48 +693,4 @@ async fn backend_loop(
     if let Some((handle, _)) = server_thread {
         let _ = handle.join();
     }
-}
-
-async fn list_audio_devices() -> Vec<DeviceInfo> {
-    let host = cpal::default_host();
-    let mut devices = Vec::new();
-    if let Ok(dev_iter) = host.devices() {
-        for (i, device) in dev_iter.enumerate() {
-            let name = device.name().unwrap_or_else(|_| format!("Device {}", i));
-            let input_configs = device
-                .supported_input_configs()
-                .ok()
-                .and_then(|mut c| c.next())
-                .map(|c| c.channels())
-                .unwrap_or(0);
-            let output_configs = device
-                .supported_output_configs()
-                .ok()
-                .and_then(|mut c| c.next())
-                .map(|c| c.channels())
-                .unwrap_or(0);
-
-            let mut sample_rates = Vec::new();
-            if let Ok(confs) = device.supported_input_configs() {
-                for c in confs {
-                    for sr in [c.min_sample_rate().0, c.max_sample_rate().0] {
-                        if !sample_rates.contains(&sr) {
-                            sample_rates.push(sr);
-                        }
-                    }
-                }
-            }
-            sample_rates.sort();
-            sample_rates.dedup();
-
-            devices.push(DeviceInfo {
-                index: i,
-                name,
-                input_channels: input_configs,
-                output_channels: output_configs,
-                sample_rates,
-            });
-        }
-    }
-    devices
 }

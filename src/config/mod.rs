@@ -5,8 +5,22 @@ use std::path::Path;
 use crate::audio::format::{AudioFormat, SampleFormat};
 use crate::net::crypto::PacketCrypto;
 
+/// What this PC does, chosen once on the setup page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    /// Has the sound card and relays it.
+    Server,
+    /// The laptop that uses the remote sound card.
+    Client,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
+    /// Unset until chosen; used by `rjsc start` (double-click and autostart).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
+
     #[serde(default)]
     pub audio: AudioSettings,
 
@@ -21,6 +35,9 @@ pub struct Settings {
 
     #[serde(default)]
     pub encryption: EncryptionSettings,
+
+    #[serde(default)]
+    pub web: WebSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +59,15 @@ pub struct AudioSettings {
 
     #[serde(default)]
     pub sample_format: SampleFormat,
+
+    /// Target of the buffer that absorbs network jitter and clock drift for
+    /// incoming audio (raised automatically if the packet sizes need more).
+    #[serde(default = "default_latency_ms")]
+    pub latency_ms: u32,
+}
+
+fn default_latency_ms() -> u32 {
+    10
 }
 
 fn default_input_device() -> String {
@@ -123,7 +149,20 @@ pub struct ClientSettings {
 }
 
 fn default_jitter_ms() -> u64 {
-    50
+    10
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebSettings {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    #[serde(default = "default_web_port")]
+    pub port: u16,
+}
+
+fn default_web_port() -> u16 {
+    42080
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,6 +177,7 @@ pub struct EncryptionSettings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            role: None,
             audio: AudioSettings {
                 input_device: default_input_device(),
                 output_device: default_output_device(),
@@ -145,6 +185,7 @@ impl Default for Settings {
                 sample_rate: default_sample_rate(),
                 buffer_frames: default_buffer_frames(),
                 sample_format: SampleFormat::default(),
+                latency_ms: default_latency_ms(),
             },
             network: NetworkSettings {
                 audio_port: default_audio_port(),
@@ -166,6 +207,10 @@ impl Default for Settings {
             encryption: EncryptionSettings {
                 enabled: false,
                 pre_shared_key: String::new(),
+            },
+            web: WebSettings {
+                enabled: default_true(),
+                port: default_web_port(),
             },
         }
     }
@@ -201,6 +246,12 @@ impl Default for EncryptionSettings {
     }
 }
 
+impl Default for WebSettings {
+    fn default() -> Self {
+        Settings::default().web
+    }
+}
+
 impl Settings {
     pub fn audio_format(&self) -> AudioFormat {
         AudioFormat::with_format(
@@ -231,10 +282,13 @@ pub fn load(path: &str) -> Result<Settings> {
     Ok(settings)
 }
 
-pub fn save_default(path: &str) -> Result<()> {
-    let settings = Settings::default();
-    let content = toml::to_string_pretty(&settings)?;
+pub fn save(path: &str, settings: &Settings) -> Result<()> {
+    let content = toml::to_string_pretty(settings)?;
     std::fs::write(path, content)?;
-    log::info!("Saved default configuration to '{}'", path);
+    log::info!("Saved configuration to '{}'", path);
     Ok(())
+}
+
+pub fn save_default(path: &str) -> Result<()> {
+    save(path, &Settings::default())
 }

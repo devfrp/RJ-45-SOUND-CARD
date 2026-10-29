@@ -22,8 +22,10 @@ Print version information and exit.
 
 .SH COMMANDS
 .TP
-\fBserve\fR [\fB\-c\fR \fICONFIG\fR]
+\fBserve\fR [\fB\-c\fR \fICONFIG\fR] [\fB\-\-daemon\fR]
 Run in SERVER mode: share this PC's audio devices over the network.
+Also serves the web control panel on port 42080 unless \fB[web] enabled\fR is false.
+On Windows, \fB\-\-daemon\fR closes the console window.
 .TP
 \fBconnect\fR [\fB\-c\fR \fICONFIG\fR] [\fB\-s\fR \fIADDRESS\fR]
 Run in CLIENT mode: connect to a remote server and use its audio devices.
@@ -39,6 +41,17 @@ Provides device selection, volume sliders, and live logging.
 \fBinit\fR [\fIPATH\fR]
 Generate a default configuration file at \fIPATH\fR (default: \fBrjsc.toml\fR).
 Edit this file to configure audio devices, network ports, and mode settings.
+.TP
+\fBstart\fR [\fB\-c\fR \fICONFIG\fR] [\fB\-\-daemon\fR]
+Run the role saved in \fICONFIG\fR (\fBrole\fR key): server with its web panel, or client
+that keeps looking for the server. Without a role, serves a setup page on
+http://localhost:42080. Running \fBrjsc\fR without a command does the same with the
+per-user configuration and opens the page in the browser.
+.TP
+\fBautostart\fR \fBenable\fR [\fB\-c\fR \fICONFIG\fR] | \fBdisable\fR | \fBstatus\fR
+Run \fBrjsc serve\fR in the background now and at every startup: a systemd user
+service on Linux (at boot when lingering can be enabled), a launchd agent on macOS
+and a scheduled task on Windows (both at login).
 
 .SH FILES
 .TP
@@ -135,6 +148,9 @@ Maximum UDP payload: 65507 bytes.
 Control protocol. JSON messages prefixed by a 4-byte little-endian length field.
 Supports device listing, selection, stream start/stop, volume control,
 status queries, and ping/pong keep-alive.
+.TP
+\fBPort 42080/TCP\fR
+Web control panel (HTTP), served by \fBrjsc serve\fR.
 
 .SH EXAMPLES
 .PP
