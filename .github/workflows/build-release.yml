@@ -1,5 +1,11 @@
 name: Build and Release
 
+# Release assets (names used by docs/install.sh and the README):
+#   rjsc-linux-x86_64.tar.gz, rjsc-linux-arm64.tar.gz   binary `rjsc`
+#   RJ45-Sound-Card-macOS.zip                           universal app bundle
+#   RJ45-Sound-Card.exe                                 standalone Windows exe
+#   SHA256SUMS
+
 on:
   push:
     tags:
@@ -10,79 +16,103 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  linux:
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            artifact_suffix: linux-x86_64
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            artifact_suffix: macos-x86_64
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            artifact_suffix: macos-arm64
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            artifact_suffix: windows-x86_64
-
-    runs-on: ${{ matrix.os }}
-
+          # 22.04's glibc (2.35) keeps the binary working on Debian 12 and Ubuntu 22.04.
+          - runner: ubuntu-22.04
+            arch: x86_64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
+      - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev pkg-config
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release
 
-      - name: Package (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          cd target/${{ matrix.target }}/release
-          tar -czf ../../../rjsc-${{ matrix.artifact_suffix }}.tar.gz rjsc
+      - name: Package
+        run: tar -czf rjsc-linux-${{ matrix.arch }}.tar.gz -C target/release rjsc
 
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cd target/${{ matrix.target }}/release
-          7z a -tzip ../../../rjsc-${{ matrix.artifact_suffix }}.zip rjsc.exe
-
-      - name: Compute SHA256 (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: sha256sum rjsc-${{ matrix.artifact_suffix }}.tar.gz
-
-      - name: Compute SHA256 (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Get-FileHash -Algorithm SHA256 "rjsc-${{ matrix.artifact_suffix }}.zip"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: rjsc-${{ matrix.artifact_suffix }}
-          path: rjsc-${{ matrix.artifact_suffix }}.*
+          name: rjsc-linux-${{ matrix.arch }}
+          path: rjsc-linux-${{ matrix.arch }}.tar.gz
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Build (Apple Silicon and Intel)
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+
+      - name: Bundle the app
+        run: |
+          APP="RJ45 Sound Card.app"
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          mkdir -p "$APP/Contents/MacOS"
+          lipo -create -output "$APP/Contents/MacOS/rjsc" \
+            target/aarch64-apple-darwin/release/rjsc \
+            target/x86_64-apple-darwin/release/rjsc
+          sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
+          # Ad-hoc signature: required to run on Apple Silicon (not notarized).
+          codesign --force --deep --sign - "$APP"
+          ditto -c -k --keepParent "$APP" RJ45-Sound-Card-macOS.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rjsc-macos
+          path: RJ45-Sound-Card-macOS.zip
+
+  windows:
+    runs-on: windows-latest
+    env:
+      # Links the C runtime into the exe, so it runs without installing anything.
+      RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Package
+        run: Copy-Item target/release/rjsc.exe RJ45-Sound-Card.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rjsc-windows
+          path: RJ45-Sound-Card.exe
 
   release:
-    needs: build
+    needs: [linux, macos, windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
-
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd artifacts && sha256sum * > SHA256SUMS
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: artifacts/*
           generate_release_notes: true

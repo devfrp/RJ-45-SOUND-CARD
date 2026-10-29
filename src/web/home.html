@@ -109,6 +109,7 @@ const T = {
     client_tag: "Client", client_title: "Le PC avec le DAW",
     client_text: "Il utilise les cartes son du serveur comme si elles étaient branchées dessus. Il se connecte dès que le câble RJ45 est branché.",
     keep_here: "Laissez le programme à cet emplacement :",
+    move_app: "Glissez d'abord « RJ45 Sound Card » dans le dossier Applications, puis relancez-le depuis là.",
     setting_up: "Configuration…", setup_slow: "Ça prend du temps. Si rien ne change, relancez RJ45 Sound Card.",
     phase_setup: "Première configuration", phase_searching: "Recherche du serveur", phase_connecting: "Connexion…",
     phase_connected: "Connecté", phase_streaming: "Son actif", phase_offline: "Arrêté",
@@ -141,6 +142,7 @@ const T = {
     client_tag: "Client", client_title: "The PC with the DAW",
     client_text: "It uses the server's sound cards as if they were plugged into it. It connects as soon as the RJ45 cable is plugged in.",
     keep_here: "Keep the program at this location:",
+    move_app: "First drag “RJ45 Sound Card” into the Applications folder, then open it from there.
     setting_up: "Setting up…", setup_slow: "This is taking a while. If nothing changes, start RJ45 Sound Card again.",
     phase_setup: "First-time setup", phase_searching: "Looking for the server", phase_connecting: "Connecting…",
     phase_connected: "Connected", phase_streaming: "Audio on", phase_offline: "Stopped",
@@ -218,6 +220,11 @@ function renderSetup() {
   setPhase("starting", settingUpSince ? t("setting_up") : t("phase_setup"));
   document.title = "RJ45 Sound Card";
   $("setup-note").textContent = `${t("keep_here")} ${state.exe_path}`;
+  // macOS runs a downloaded app from a temporary copy until it is moved:
+  // autostart would point to a path that disappears.
+  const translocated = state.exe_path.includes("/AppTranslocation/");
+  if (translocated) showAlert("setup-error", t("move_app"));
+  if (!settingUpSince) document.querySelectorAll(".role").forEach((b) => { b.disabled = translocated; });
 }
 
 function renderClient() {

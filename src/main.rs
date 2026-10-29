@@ -84,15 +84,33 @@ enum Commands {
         #[command(subcommand)]
         action: AutostartAction,
     },
+
+    /// Virtual sound card used by the client
+    Driver {
+        #[command(subcommand)]
+        action: DriverAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum DriverAction {
+    /// Install it (asks for administrator rights)
+    Install,
+    /// Show whether it is installed
+    Status,
 }
 
 #[derive(Subcommand)]
 enum AutostartAction {
-    /// Run `rjsc serve` in the background now and at every startup
+    /// Run `rjsc start` in the background now and at every startup
     Enable {
         /// Path to configuration file (default: per-user config directory)
         #[arg(short, long)]
         config: Option<String>,
+
+        /// What this PC is (default: the saved role, or server)
+        #[arg(long, value_parser = ["server", "client"])]
+        role: Option<String>,
     },
     /// Stop and remove the background server
     Disable,
@@ -193,9 +211,30 @@ async fn main() -> Result<()> {
             println!("  rjsc connect (to use remote audio)");
         }
         Commands::Autostart { action } => match action {
-            AutostartAction::Enable { config } => autostart::enable(config.as_deref())?,
+            AutostartAction::Enable { config, role } => {
+                let role = role.map(|r| match r.as_str() {
+                    "client" => config::Role::Client,
+                    _ => config::Role::Server,
+                });
+                autostart::enable(config.as_deref(), role)?
+            }
             AutostartAction::Disable => autostart::disable()?,
             AutostartAction::Status => autostart::status()?,
+        },
+        Commands::Driver { action } => match action {
+            DriverAction::Install => {
+                rj45_sound_card::driver::install()?;
+                match rj45_sound_card::driver::detect() {
+                    Some(name) => println!("Virtual sound card installed: {}", name),
+                    None => println!(
+                        "Installer finished, but no virtual sound card is visible yet (a reboot may be needed)."
+                    ),
+                }
+            }
+            DriverAction::Status => match rj45_sound_card::driver::detect() {
+                Some(name) => println!("Virtual sound card: {}", name),
+                None => println!("No virtual sound card installed."),
+            },
         },
     }
 

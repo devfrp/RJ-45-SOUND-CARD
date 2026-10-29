@@ -34,7 +34,8 @@ fn home() -> Result<PathBuf> {
         .context("HOME is not set")
 }
 
-pub fn enable(config: Option<&str>) -> Result<()> {
+/// `role`: overrides the saved role; without one, the PC becomes a server.
+pub fn enable(config: Option<&str>, role: Option<crate::config::Role>) -> Result<()> {
     let config = match config {
         Some(path) => PathBuf::from(path),
         None => default_config_path()?,
@@ -46,9 +47,9 @@ pub fn enable(config: Option<&str>) -> Result<()> {
     }
     let config_str = config.to_string_lossy();
     let mut settings = crate::config::load(&config_str)?;
-    if settings.role.is_none() || !config.exists() {
+    if role.is_some() || settings.role.is_none() || !config.exists() {
         // Enabling from the command line is how servers were set up before roles existed.
-        settings.role.get_or_insert(crate::config::Role::Server);
+        settings.role = role.or(settings.role).or(Some(crate::config::Role::Server));
         crate::config::save(&config_str, &settings)?;
     }
 
@@ -58,7 +59,11 @@ pub fn enable(config: Option<&str>) -> Result<()> {
     println!("  Program: {}", exe.display());
     println!("  Config:  {}", config.display());
     println!("The program must stay at this location; run this command again if you move it.");
-    println!("Control panel: http://localhost:{}", settings.web.port);
+    println!(
+        "  Role:    {:?}",
+        settings.role.unwrap_or(crate::config::Role::Server)
+    );
+    println!("Page: http://localhost:{}", settings.web.port);
     Ok(())
 }
 

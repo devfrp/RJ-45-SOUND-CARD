@@ -29,9 +29,14 @@ making the remote sound card accessible as if it were local.
 - **Cross-platform**: Windows, Linux, macOS
 - **All sound cards**: compatible with any audio device recognized by the OS
   (MOTU, RME, Focusrite, Universal Audio, Presonus, etc.)
-- **Bidirectional**: server → client audio AND client → server audio
+- **Bidirectional**: server → client audio AND client → server audio (for now the client sends
+  its default input device, not the DAW's output)
 - **Low latency**: UDP streaming with configurable buffers (64–1024 frames)
 - **Jitter buffer**: packet reordering and jitter compensation for smooth playback
+- **Clock drift compensation**: adaptive resampling keeps both sound cards in sync over long sessions
+- **Web control panel**: adjust the server from any browser, in French or English
+- **No commands**: one-line install on Linux and macOS, app on macOS, standalone exe on Windows;
+  starts with the computer and connects as soon as the cable is plugged in
 - **Encryption**: optional pre-shared key encryption and authentication
 - **Integer PCM**: f32, i16, i24, i32 sample formats with automatic conversion
 - **Auto-discovery**: the client automatically finds servers on the network
@@ -43,59 +48,66 @@ making the remote sound card accessible as if it were local.
 
 ## Installation
 
-### Prerequisites
+Install it on both PCs, then choose on each one what it is. Everything comes from the
+[latest release](https://github.com/devfrp/RJ-45-SOUND-CARD/releases/latest).
 
-- **Rust** (to compile): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- **PortAudio** (audio library):
-  - Linux: `sudo apt install libasound2-dev` (or `pulseaudio`, `jack`)
-  - macOS: already included with CoreAudio
-  - Windows: already included with WASAPI
-
-### Compilation
+### Linux
 
 ```bash
+curl -fsSL https://devfrp.github.io/RJ-45-SOUND-CARD/install.sh | sh
+```
+
+The script asks whether this PC is the server (sound cards) or the client (DAW), installs `rjsc`
+in `~/.local/bin`, installs the ALSA library if missing and starts RJ45 Sound Card now and at every
+startup. On a server it adds you to the `audio` group (restart once); on a client it installs the
+virtual sound card. Over SSH or in a script, pass the role: `curl -fsSL … | sh -s -- server`
+(or `client`, or `uninstall` to remove it). Supports x86_64 and arm64, with glibc 2.35 or newer
+(Debian 12, Ubuntu 22.04 and later).
+
+### macOS
+
+Run the same command in Terminal: it installs **RJ45 Sound Card.app** in Applications and opens it.
+Or download `RJ45-Sound-Card-macOS.zip`, drag the app into Applications and open it from there. The
+app isn't notarized: the first time, macOS refuses to open it; go to System Settings → Privacy &
+Security and click "Open Anyway". The app is universal (Apple Silicon and Intel), macOS 11 or newer.
+
+### Windows
+
+Download `RJ45-Sound-Card.exe`, put it in a folder where it will stay, and double-click it. It needs
+nothing else installed.
+
+- SmartScreen ("Windows protected your PC"): More info → Run anyway.
+- Windows Firewall: allow it on **private and public** networks (a direct cable counts as public).
+
+### First run
+
+A page opens in the browser and asks what this PC is:
+
+- **The PC with the sound cards** (server): it starts with the computer from now on and relays its
+  sound cards. Adjust it from any browser at `http://<server-ip>:42080`.
+- **The PC with the DAW** (client): it starts with the computer, looks for the server and connects as
+  soon as the RJ45 cable is plugged in. Its page (`http://localhost:42080`) shows the connection and
+  installs the virtual sound card once (the computer asks for administrator permission; this needs
+  internet).
+
+Opening RJ45 Sound Card again later just opens the page.
+
+Both PCs need an IPv4 address on the cable. Windows and macOS assign one by themselves (169.254.x.x)
+after about a minute; on Linux, set the wired connection to "Link-Local Only" (or "Shared to other
+computers") in the network settings.
+
+### Build from source
+
+```bash
+# Linux: sudo apt install libasound2-dev pkg-config
 git clone https://github.com/devfrp/RJ-45-SOUND-CARD.git
 cd RJ-45-SOUND-CARD
 cargo build --release
 ./target/release/rjsc --help
 ```
 
-The `rjsc` binary is self-contained and can be copied to any machine running the same OS.
-
-### Virtual Audio Device Setup (CLIENT)
-
-So the client PC sees the remote sound card as a local device:
-
-**Linux**:
-```bash
-sudo ./scripts/linux_setup.sh install
-```
-
-**macOS**:
-```bash
-sudo ./scripts/mac_setup.sh install
-```
-
-**Windows** (Administrator PowerShell):
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows_setup.ps1 install
-```
-
-## Quick start (no commands)
-
-1. Copy `rjsc` (`rjsc.exe` on Windows) to both PCs, somewhere it will stay.
-2. Double-click it. A page opens in the browser and asks what this PC is:
-   - **The PC with the sound cards** (server): it starts with the computer from now on and relays
-     its sound cards. Adjust it from any browser at `http://<server-ip>:42080`.
-   - **The PC with the DAW** (client): it starts with the computer, looks for the server and
-     connects as soon as the RJ45 cable is plugged in. Its page (`http://localhost:42080`) shows
-     the connection and installs the virtual sound card once (the computer asks for administrator
-     permission; this needs internet).
-3. Double-clicking `rjsc` again later just opens the page.
-
-Both PCs need an IPv4 address on the cable. Windows and macOS assign one by themselves
-(169.254.x.x) after about a minute; on Linux, set the wired connection to "Link-Local Only" (or
-"Shared to other computers") in the network settings.
+The virtual sound card installers are built into `rjsc` (`rjsc driver install`); the same scripts are
+in `scripts/` (`linux_setup.sh`, `mac_setup.sh`, `windows_setup.ps1`) for a manual install.
 
 ## Usage
 
@@ -232,4 +244,4 @@ MIT
 - [Contributing](CONTRIBUTING.md) — contribution guide
 - [Changelog](CHANGELOG.md) — version history
 - [Man page](man/man1/rjsc.1) — `man rjsc`
-- [English README](README.en.md)
+- [Version française](README.fr.md)

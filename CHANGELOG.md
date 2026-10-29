@@ -2,9 +2,11 @@
 
 All notable changes to RJ45 Sound Card are documented here.
 
-## [Unreleased]
+## [1.1.0] — 2026-10-29
 
 ### Added
+- **Installation without commands**: `curl -fsSL https://devfrp.github.io/RJ-45-SOUND-CARD/install.sh | sh` on Linux (x86_64, arm64; apt/dnf/pacman/zypper) and macOS; **RJ45 Sound Card.app** (universal) on macOS; standalone `RJ45-Sound-Card.exe` (static C runtime) on Windows. Release assets come with `SHA256SUMS`.
+- `rjsc autostart enable --role server|client` and `rjsc driver install|status`, used by the install script (e.g. on a server without a screen).
 - **Web control panel**: `rjsc serve` serves a page on port 42080 (`[web]` section) to see the status and connected clients, choose devices and format, set per-channel volumes and read the logs, in French or English. Settings are saved to the configuration file and applied by restarting the audio server.
 - **Automatic retry**: when the audio server fails (e.g. sound card not plugged in yet), it retries every 10 seconds while the panel stays available.
 - **`rjsc autostart enable|disable|status`**: start the server at every startup (systemd user service, launchd agent or Windows scheduled task).

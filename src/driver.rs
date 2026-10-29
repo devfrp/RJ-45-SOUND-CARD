@@ -65,18 +65,32 @@ fn check(cmd: &mut Command) -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+fn is_root() -> bool {
+    Command::new("id")
+        .arg("-u")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+        .unwrap_or(false)
+}
+
 #[cfg(target_os = "linux")]
 fn run_elevated(script: &Path) -> Result<()> {
-    check(
-        Command::new("pkexec")
-            .arg("/bin/bash")
-            .arg(script)
-            .arg("install"),
-    )
+    let mut cmd = if is_root() {
+        Command::new("/bin/bash")
+    } else {
+        let mut cmd = Command::new("pkexec");
+        cmd.arg("/bin/bash");
+        cmd
+    };
+    check(cmd.arg(script).arg("install"))
 }
 
 #[cfg(target_os = "macos")]
 fn run_elevated(script: &Path) -> Result<()> {
+    if is_root() {
+        return check(Command::new("/bin/bash").arg(script).arg("install"));
+    }
     let apple_script = format!(
         "do shell script \"/bin/bash \" & quoted form of \"{}\" & \" install\" with administrator privileges",
         script.display().to_string().replace('\\', "\\\\").replace('"', "\\\"")

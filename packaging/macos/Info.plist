@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Bundle for the macOS release; @VERSION@ is filled in by .github/workflows/build-release.yml. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>RJ45 Sound Card</string>
+  <key>CFBundleDisplayName</key><string>RJ45 Sound Card</string>
+  <key>CFBundleIdentifier</key><string>com.rj45soundcard.rjsc</string>
+  <key>CFBundleExecutable</key><string>rjsc</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>@VERSION@</string>
+  <key>CFBundleShortVersionString</key><string>@VERSION@</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <!-- The interface is the web page; no Dock icon or menu bar. -->
+  <key>LSUIElement</key><true/>
+  <!-- Required to capture audio from the sound card. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>RJ45 Sound Card sends this Mac's audio inputs to the other PC.</string>
+</dict>
+</plist>

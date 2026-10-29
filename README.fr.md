@@ -29,8 +29,14 @@ rendant la carte son distante accessible comme si elle était locale.
 - **Multi-plateforme** : Windows, Linux, macOS
 - **Toutes cartes son** : compatible avec tout périphérique audio reconnu par l'OS
   (MOTU, RME, Focusrite, Universal Audio, Presonus, etc.)
-- **Bidirectionnel** : audio du serveur → client ET audio du client → serveur
+- **Bidirectionnel** : audio du serveur → client ET audio du client → serveur (pour l'instant, le
+  client envoie son entrée audio par défaut, pas la sortie du DAW)
 - **Jitter buffer** : réordonnancement et compensation de gigue pour une lecture fluide
+- **Compensation de dérive d'horloge** : un ré-échantillonnage adaptatif garde les deux cartes son
+  synchronisées sur de longues sessions
+- **Panneau de contrôle web** : réglez le serveur depuis n'importe quel navigateur, en français ou anglais
+- **Aucune commande** : installation en une ligne sous Linux et macOS, app sur macOS, exe autonome sous
+  Windows ; démarre avec l'ordinateur et se connecte dès que le câble est branché
 - **Chiffrement** : chiffrement par clé pré-partagée et authentification (optionnel)
 - **PCM entier** : formats f32, i16, i24, i32 avec conversion automatique
 - **Auto-détection** : détection automatique du périphérique virtuel (Loopback, BlackHole, VB-Cable)
@@ -43,59 +49,67 @@ rendant la carte son distante accessible comme si elle était locale.
 
 ## Installation
 
-### Prérequis
+Installez-le sur les deux PC, puis choisissez sur chacun ce qu'il est. Tout vient de la
+[dernière version](https://github.com/devfrp/RJ-45-SOUND-CARD/releases/latest).
 
-- **Rust** (pour compiler) : `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- **PortAudio** (bibliothèque audio) :
-  - Linux : `sudo apt install libasound2-dev` (ou `pulseaudio`, `jack`)
-  - macOS : déjà inclus avec CoreAudio
-  - Windows : déjà inclus avec WASAPI
-
-### Compilation
+### Linux
 
 ```bash
+curl -fsSL https://devfrp.github.io/RJ-45-SOUND-CARD/install.sh | sh
+```
+
+Le script demande si ce PC est le serveur (cartes son) ou le client (DAW), installe `rjsc` dans
+`~/.local/bin`, installe la bibliothèque ALSA si elle manque et démarre RJ45 Sound Card tout de suite et
+à chaque démarrage. Sur un serveur, il vous ajoute au groupe `audio` (redémarrez une fois) ; sur un client,
+il installe la carte son virtuelle. Par SSH ou dans un script, indiquez le rôle :
+`curl -fsSL … | sh -s -- server` (ou `client`, ou `uninstall` pour désinstaller). Compatible x86_64 et
+arm64, avec glibc 2.35 ou plus récente (Debian 12, Ubuntu 22.04 et suivantes).
+
+### macOS
+
+Lancez la même commande dans le Terminal : elle installe **RJ45 Sound Card.app** dans Applications et
+l'ouvre. Ou téléchargez `RJ45-Sound-Card-macOS.zip`, glissez l'app dans Applications et ouvrez-la depuis
+là. L'app n'est pas notariée : la première fois, macOS refuse de l'ouvrir ; allez dans Réglages Système →
+Confidentialité et sécurité et cliquez sur « Ouvrir quand même ». L'app est universelle (Apple Silicon et
+Intel), macOS 11 ou plus récent.
+
+### Windows
+
+Téléchargez `RJ45-Sound-Card.exe`, placez-le dans un dossier où il restera, et double-cliquez dessus. Il
+n'a besoin de rien d'autre.
+
+- SmartScreen (« Windows a protégé votre ordinateur ») : Informations complémentaires → Exécuter quand même.
+- Pare-feu Windows : autorisez-le sur les réseaux **privés et publics** (un câble direct compte comme public).
+
+### Premier lancement
+
+Une page s'ouvre dans le navigateur et demande ce qu'est ce PC :
+
+- **Le PC avec les cartes son** (serveur) : il démarre désormais avec l'ordinateur et relaie ses cartes
+  son. Réglez-le depuis n'importe quel navigateur sur `http://<ip-du-serveur>:42080`.
+- **Le PC avec le DAW** (client) : il démarre avec l'ordinateur, cherche le serveur et se connecte dès que
+  le câble RJ45 est branché. Sa page (`http://localhost:42080`) affiche la connexion et installe une fois
+  la carte son virtuelle (l'ordinateur demande l'autorisation administrateur ; il faut internet).
+
+Rouvrir RJ45 Sound Card plus tard ouvre simplement la page.
+
+Les deux PC ont besoin d'une adresse IPv4 sur le câble. Windows et macOS s'en attribuent une tout seuls
+(169.254.x.x) au bout d'une minute environ ; sous Linux, réglez la connexion filaire sur « Lien local
+uniquement » (ou « Partagée avec d'autres ordinateurs ») dans les paramètres réseau.
+
+### Compiler depuis les sources
+
+```bash
+# Linux : sudo apt install libasound2-dev pkg-config
 git clone https://github.com/devfrp/RJ-45-SOUND-CARD.git
 cd RJ-45-SOUND-CARD
 cargo build --release
 ./target/release/rjsc --help
 ```
 
-Le binaire `rjsc` est autonome et peut être copié sur n'importe quelle machine du même OS.
-
-### Configuration du périphérique audio virtuel (CLIENT)
-
-Pour que le PC client voie la carte son distante comme un périphérique local :
-
-**Linux** :
-```bash
-sudo ./scripts/linux_setup.sh install
-```
-
-**macOS** :
-```bash
-sudo ./scripts/mac_setup.sh install
-```
-
-**Windows** (PowerShell Administrateur) :
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows_setup.ps1 install
-```
-
-## Démarrage rapide (sans commande)
-
-1. Copiez `rjsc` (`rjsc.exe` sous Windows) sur les deux PC, à un endroit où il restera.
-2. Double-cliquez dessus. Une page s'ouvre dans le navigateur et demande ce qu'est ce PC :
-   - **Le PC avec les cartes son** (serveur) : il démarre désormais avec l'ordinateur et relaie ses
-     cartes son. Réglez-le depuis n'importe quel navigateur sur `http://<ip-du-serveur>:42080`.
-   - **Le PC avec le DAW** (client) : il démarre avec l'ordinateur, cherche le serveur et se connecte
-     dès que le câble RJ45 est branché. Sa page (`http://localhost:42080`) affiche la connexion et
-     installe une fois la carte son virtuelle (l'ordinateur demande l'autorisation administrateur ;
-     il faut internet).
-3. Un nouveau double-clic sur `rjsc` ouvre simplement la page.
-
-Les deux PC ont besoin d'une adresse IPv4 sur le câble. Windows et macOS s'en attribuent une tout
-seuls (169.254.x.x) au bout d'une minute environ ; sous Linux, réglez la connexion filaire sur
-« Lien local uniquement » (ou « Partagée avec d'autres ordinateurs ») dans les paramètres réseau.
+Les installeurs de la carte son virtuelle sont intégrés à `rjsc` (`rjsc driver install`) ; les mêmes
+scripts sont dans `scripts/` (`linux_setup.sh`, `mac_setup.sh`, `windows_setup.ps1`) pour une
+installation manuelle.
 
 ## Utilisation
 
@@ -236,4 +250,4 @@ MIT
 - [Contribuer](CONTRIBUTING.md) — guide de contribution
 - [Journal des modifications](CHANGELOG.md) — historique des versions
 - [Page de man](man/man1/rjsc.1) — `man rjsc`
-- [English README](README.en.md)
+- [English version](README.md)

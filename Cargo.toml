@@ -1,6 +1,6 @@
 [package]
 name = "rj45-sound-card"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2021"
 description = "Network audio bridge - share any sound card over Ethernet/RJ45 across Windows, Linux, and macOS"
 authors = ["RJ45 Sound Card Team"]
