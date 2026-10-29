@@ -18,10 +18,15 @@ All notable changes to RJ45 Sound Card are documented here.
 - `audio.latency_ms` (default 10 ms): network margin for incoming audio, editable in the panel.
 
 ### Changed
+- The client follows the server's channel count and sample rate instead of its own settings, so every channel of the server's sound card reaches the client. Devices with fewer channels get channel N to channel N (extra channels dropped, missing ones silent), in both directions.
+- Audio blocks are split into packets of at most 8 KB, so many channels (e.g. 64 at 256 frames) fit within UDP limits without heavy IP fragmentation.
+- The server's `device_list` reports the sample rate it streams at (one value) instead of a fixed list.
 - Lower latency defaults: `client.jitter_buffer_ms` 50 → 10 ms.
 - `audio.buffer_frames` is now applied to the sound card (it was ignored); a size the device refuses or fails with falls back to its default.
 
 ### Fixed
+- Packet headers announced the configured buffer size instead of the real number of frames, so the receiver dropped or truncated packets whenever the sound card delivered blocks of another size.
+- With different channel counts on both sides (e.g. server 8, client 2), audio came out scrambled.
 - Playback no longer chops the audio: it used one network packet per sound card callback, dropping or padding the difference whenever their sizes differed.
 - The jitter buffer counted missing packets as samples, so one lost packet stalled playback for about 12 seconds.
 - A failing audio stream no longer floods the log with thousands of errors per second.

@@ -105,6 +105,10 @@ Device buffers use `audio.buffer_frames` (`BufferSize::Fixed`). Some backends ac
 
 The audio data follows immediately: `frame_count * channels * sample_bytes` of little-endian PCM (see `sample_format`).
 
+Senders split each captured block into packets of at most 8 KB of audio (`MAX_AUDIO_PAYLOAD`, `send_audio_block`), each with the next sequence number and its real `frame_count`. Receivers remap `channels` to their playback channel count, channel N to channel N (`audio::format::remap_channels`).
+
+The client streams at the server's channel count and sample rate: the single entry of `device_list` reports the server's stream channels (`input_channels`) and its rate (`sample_rates`, one value; older servers sent a fixed list, and the client then falls back to its own `audio.sample_rate`). Local devices with fewer channels open what they have.
+
 When encryption is enabled, a 4-byte CRC32 authentication tag is appended to the packet:
 
 ```

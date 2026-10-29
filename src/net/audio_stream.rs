@@ -7,6 +7,9 @@ use crate::net::crypto::PacketCrypto;
 
 pub const DEFAULT_AUDIO_PORT: u16 = 42001;
 pub const MAX_PACKET_SIZE: usize = 65507;
+/// Largest audio payload per packet. Bigger blocks (many channels) are split:
+/// a 64 KB datagram becomes ~45 IP fragments, and losing any one loses it all.
+pub const MAX_AUDIO_PAYLOAD: usize = 8192;
 pub const ENCRYPTED_AUTH_TAG_SIZE: usize = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +89,41 @@ impl AudioPacketHeader {
             data_len: u32::from_le_bytes(bytes[36..40].try_into().ok()?),
         })
     }
+}
+
+/// Frames per packet so the payload stays within `MAX_AUDIO_PAYLOAD`.
+pub fn frames_per_packet(channels: u16, fmt: SampleFormat) -> usize {
+    (MAX_AUDIO_PAYLOAD / (channels.max(1) as usize * fmt.bytes_per_sample())).max(1)
+}
+
+/// Sends an interleaved block, split into packets of at most
+/// `frames_per_packet` frames. Each packet takes the next value of `sequence`;
+/// `template` supplies stream id, channels, rate and format.
+pub async fn send_audio_block(
+    socket: &UdpSocket,
+    addr: &std::net::SocketAddr,
+    template: &AudioPacketHeader,
+    sequence: &mut u64,
+    samples: &[f32],
+    crypto: Option<&PacketCrypto>,
+) -> Result<()> {
+    let fmt = SampleFormat::from_u8(template.sample_format).unwrap_or(SampleFormat::F32);
+    let channels = template.channels.max(1);
+    let chunk = frames_per_packet(channels, fmt) * channels as usize;
+    for part in samples.chunks(chunk) {
+        let frames = (part.len() / channels as usize) as u32;
+        let header = AudioPacketHeader::new(
+            template.stream_id,
+            *sequence,
+            channels,
+            template.sample_rate,
+            fmt,
+            frames,
+        );
+        *sequence = sequence.wrapping_add(1);
+        send_audio_packet(socket, addr, &header, part, crypto).await?;
+    }
+    Ok(())
 }
 
 pub async fn send_audio_packet(
@@ -266,6 +304,39 @@ fn bytes_to_f32_slice(bytes: &[u8], fmt: SampleFormat) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_send_audio_block_splits_large_blocks() {
+        let rx = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let tx = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = rx.local_addr().unwrap();
+
+        // 64 channels x 256 frames of f32 = 64 KB: too big for one packet.
+        let channels = 64u16;
+        let samples: Vec<f32> = (0..256 * 64).map(|i| i as f32 / 16384.0).collect();
+        let template = AudioPacketHeader::new(7, 0, channels, 48000, SampleFormat::F32, 0);
+        let mut sequence = 100;
+        send_audio_block(&tx, &addr, &template, &mut sequence, &samples, None)
+            .await
+            .unwrap();
+
+        let per_packet = frames_per_packet(channels, SampleFormat::F32);
+        let packets = 256_usize.div_ceil(per_packet);
+        assert_eq!(sequence, 100 + packets as u64);
+
+        let mut received = Vec::new();
+        let mut buf = vec![0u8; MAX_PACKET_SIZE];
+        for expected_seq in 100..sequence {
+            let len = rx.recv(&mut buf).await.unwrap();
+            assert!(len <= AudioPacketHeader::SIZE + MAX_AUDIO_PAYLOAD);
+            let (header, part) = parse_audio_packet(&buf[..len]).unwrap();
+            assert_eq!(header.sequence, expected_seq);
+            assert_eq!(header.stream_id, 7);
+            assert_eq!(part.len(), header.frame_count as usize * channels as usize);
+            received.extend(part);
+        }
+        assert_eq!(received, samples);
+    }
 
     #[test]
     fn test_f32_roundtrip() {

@@ -40,6 +40,21 @@ impl SampleFormat {
     }
 }
 
+/// Converts interleaved audio between channel counts, channel N to channel N:
+/// extra channels are dropped, missing ones are silent.
+pub fn remap_channels(samples: Vec<f32>, from: usize, to: usize) -> Vec<f32> {
+    if from == to || from == 0 || to == 0 {
+        return samples;
+    }
+    let frames = samples.len() / from;
+    let mut out = vec![0.0; frames * to];
+    let shared = from.min(to);
+    for (src, dst) in samples.chunks_exact(from).zip(out.chunks_exact_mut(to)) {
+        dst[..shared].copy_from_slice(&src[..shared]);
+    }
+    out
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct AudioFormat {
     pub channels: u16,
@@ -98,5 +113,25 @@ impl Default for AudioFormat {
             buffer_frames: 256,
             sample_format: SampleFormat::F32,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_remap_channels() {
+        // 3 channels -> 2: third dropped.
+        assert_eq!(
+            remap_channels(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 3, 2),
+            vec![1.0, 2.0, 4.0, 5.0]
+        );
+        // 2 channels -> 4: extra ones silent.
+        assert_eq!(
+            remap_channels(vec![1.0, 2.0, 3.0, 4.0], 2, 4),
+            vec![1.0, 2.0, 0.0, 0.0, 3.0, 4.0, 0.0, 0.0]
+        );
+        assert_eq!(remap_channels(vec![1.0, 2.0], 2, 2), vec![1.0, 2.0]);
     }
 }

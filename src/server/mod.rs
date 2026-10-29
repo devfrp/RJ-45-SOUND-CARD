@@ -190,7 +190,6 @@ pub async fn run_with_hooks(
     let streams = client_streams.clone();
     let fmt_ch = audio_format.channels;
     let fmt_sr = audio_format.sample_rate;
-    let fmt_bf = audio_format.buffer_frames as u32;
     let fmt_sfmt = audio_format.sample_format;
     let vols = volumes.clone();
     let crypto_cap = crypto.clone();
@@ -216,24 +215,16 @@ pub async fn run_with_hooks(
                             stream_id: 0,
                             sequence: 0,
                         });
-                        let seq = entry.sequence;
-                        entry.sequence = entry.sequence.wrapping_add(1);
-
-                        let header = AudioPacketHeader::new(
-                            entry.stream_id,
-                            seq,
-                            fmt_ch,
-                            fmt_sr,
-                            fmt_sfmt,
-                            fmt_bf,
-                        );
+                        let template =
+                            AudioPacketHeader::new(entry.stream_id, 0, fmt_ch, fmt_sr, fmt_sfmt, 0);
 
                         let audio_addr = std::net::SocketAddr::new(addr.ip(), audio_port);
 
-                        if let Err(e) = audio_stream::send_audio_packet(
+                        if let Err(e) = audio_stream::send_audio_block(
                             &audio_socket_clone,
                             &audio_addr,
-                            &header,
+                            &template,
+                            &mut entry.sequence,
                             &samples,
                             crypto_cap.as_ref(),
                         )
@@ -256,6 +247,7 @@ pub async fn run_with_hooks(
     let audio_socket_clone2 = audio_socket.clone();
     let client_addr_filter = current_client_addrs.clone();
     let crypto_playback = crypto.clone();
+    let playback_channels = actual_format.channels as usize;
     tasks.spawn(async move {
         let mut buf = vec![0u8; audio_stream::MAX_PACKET_SIZE];
         loop {
@@ -267,10 +259,16 @@ pub async fn run_with_hooks(
                     if !allowed {
                         continue;
                     }
-                    if let Some((_header, samples)) = audio_stream::parse_audio_packet_decrypt(
+                    if let Some((header, samples)) = audio_stream::parse_audio_packet_decrypt(
                         &buf[..len],
                         crypto_playback.as_ref(),
                     ) {
+                        // Clients with fewer (or more) channels: channel N to channel N.
+                        let samples = crate::audio::format::remap_channels(
+                            samples,
+                            header.channels as usize,
+                            playback_channels,
+                        );
                         if let Err(e) = playback_tx.try_send(samples) {
                             if !e.is_disconnected() {
                                 log::warn!("Playback buffer full, dropping frame");
@@ -388,7 +386,8 @@ pub async fn run_with_hooks(
                                 name: device_name_str.clone(),
                                 input_channels: audio_fmt.channels,
                                 output_channels: audio_fmt.channels,
-                                sample_rates: vec![44100, 48000, 96000, 192000],
+                                // The rate it streams at, which clients follow.
+                                sample_rates: vec![audio_fmt.sample_rate],
                             }];
                             if let Err(e) = control::send_control(
                                 &mut write_half,

@@ -165,6 +165,16 @@ pub fn find_device_by_index(index: usize) -> Result<cpal::Device> {
         .ok_or_else(|| anyhow::anyhow!("Device at index {} not found", index))
 }
 
+/// Most channels the device supports for output (or input), if it says.
+pub fn max_channels(device: &cpal::Device, output: bool) -> Option<u16> {
+    let configs: Vec<cpal::SupportedStreamConfigRange> = if output {
+        device.supported_output_configs().ok()?.collect()
+    } else {
+        device.supported_input_configs().ok()?.collect()
+    };
+    configs.iter().map(|c| c.channels()).max()
+}
+
 pub fn default_output_device() -> Result<cpal::Device> {
     cpal::default_host()
         .default_output_device()

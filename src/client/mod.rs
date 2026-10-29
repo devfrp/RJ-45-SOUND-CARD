@@ -286,9 +286,14 @@ async fn read_msg_loop(
         anyhow::bail!("No audio devices available on server");
     }
 
+    // Follow the server: all its channels, at its sample rate (older servers
+    // list several rates instead of their own; the local setting is used then).
     let device = &device_list[0];
-    let channels = settings.audio.channels.min(device.input_channels);
-    let sample_rate = settings.audio.sample_rate;
+    let channels = device.input_channels.max(1);
+    let sample_rate = match device.sample_rates.as_slice() {
+        [rate] => *rate,
+        _ => settings.audio.sample_rate,
+    };
 
     control::send_control(
         write_half,
@@ -313,26 +318,45 @@ async fn read_msg_loop(
         }
     }
 
-    let audio_format = AudioFormat::with_format(
-        channels,
-        sample_rate,
-        settings.audio.buffer_frames,
-        settings.audio.sample_format,
-    );
-
     let output_device = if settings.client.use_virtual_device {
         virtual_output_device(&settings.client.virtual_device_name)?
     } else {
         crate::audio::default_output_device()?
     };
+    let input_device = crate::audio::default_input_device()?;
 
-    let playback = AudioPlayback::new(&output_device, &audio_format, settings.audio.latency_ms)?;
+    // Local devices may have fewer channels than the server: open what they
+    // have; audio is remapped channel N to channel N.
+    let local_format = |device: &cpal::Device, output: bool| {
+        let available = crate::audio::max_channels(device, output).unwrap_or(channels);
+        AudioFormat::with_format(
+            channels.min(available).max(1),
+            sample_rate,
+            settings.audio.buffer_frames,
+            settings.audio.sample_format,
+        )
+    };
+    let playback_format = local_format(&output_device, true);
+    let capture_format = local_format(&input_device, false);
+    if playback_format.channels < channels {
+        log::warn!(
+            "Output device has {} channels, server sends {}: extra channels are dropped",
+            playback_format.channels,
+            channels
+        );
+    }
+    log::info!(
+        "Streaming {} channels @ {} Hz from the server",
+        channels,
+        sample_rate
+    );
+
+    let playback = AudioPlayback::new(&output_device, &playback_format, settings.audio.latency_ms)?;
     let playout_stats = playback.stats();
     playback.start()?;
     let playback_tx = playback.sender();
 
-    let input_device = crate::audio::default_input_device()?;
-    let capture = AudioCapture::new(&input_device, &audio_format)?;
+    let capture = AudioCapture::new(&input_device, &capture_format)?;
     capture.start()?;
     let capture_rx = capture.receiver();
 
@@ -352,10 +376,12 @@ async fn read_msg_loop(
         format!("{}:{}", server_ip, audio_port).parse()?;
 
     // Jitter-buffered receive path
+    // Packets are remapped to the playback channel count before reordering.
+    let playback_channels = playback_format.channels as usize;
     let jitter_buffer = Arc::new(Mutex::new(JitterBuffer::new(
         settings.client.jitter_buffer_ms,
         sample_rate,
-        channels,
+        playback_format.channels,
     )));
     let rx_sock = UdpSocket::bind(format!("0.0.0.0:{}", settings.network.audio_port)).await?;
     let rx_tx = playback_tx.clone();
@@ -369,6 +395,11 @@ async fn read_msg_loop(
                     if let Some((header, samples)) =
                         audio_stream::parse_audio_packet_decrypt(&buf[..len], crypto_rx.as_ref())
                     {
+                        let samples = crate::audio::format::remap_channels(
+                            samples,
+                            header.channels as usize,
+                            playback_channels,
+                        );
                         let mut jb = jb_clone.lock().await;
                         jb.push(header.sequence, samples);
                         for packet in jb.drain_available() {
@@ -393,22 +424,25 @@ async fn read_msg_loop(
 
     // Send path
     let tx_sock = UdpSocket::bind("0.0.0.0:0").await?;
-    let ch = audio_format.channels;
-    let sr = audio_format.sample_rate;
-    let bf = audio_format.buffer_frames as u32;
-    let fmt = audio_format.sample_format;
+    let template = AudioPacketHeader::new(
+        0,
+        0,
+        capture_format.channels,
+        capture_format.sample_rate,
+        capture_format.sample_format,
+        0,
+    );
     let crypto_tx = crypto.clone();
     let tx_task = tokio::spawn(async move {
         let mut sequence: u64 = 0;
         loop {
             match capture_rx.recv() {
                 Ok(samples) => {
-                    let header = AudioPacketHeader::new(0, sequence, ch, sr, fmt, bf);
-                    sequence = sequence.wrapping_add(1);
-                    if let Err(e) = audio_stream::send_audio_packet(
+                    if let Err(e) = audio_stream::send_audio_block(
                         &tx_sock,
                         &server_audio_addr,
-                        &header,
+                        &template,
+                        &mut sequence,
                         &samples,
                         crypto_tx.as_ref(),
                     )
